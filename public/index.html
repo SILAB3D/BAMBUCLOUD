@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d1117">
+<title>Bambu A1 · Dashboard</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel-2:#1c2230; --line:#262d38;
+    --text:#e6edf3; --dim:#8b949e; --accent:#00a97f; --warn:#d29922;
+    --err:#f85149; --ok:#3fb950; --radius:14px;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    padding:16px; max-width:1100px; margin-inline:auto;
+  }
+  h1{font-size:19px;margin:0;font-weight:600}
+  header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--err);flex:none;
+       box-shadow:0 0 0 3px rgba(248,81,73,.15)}
+  .dot.on{background:var(--ok);box-shadow:0 0 0 3px rgba(63,185,80,.15)}
+  .sub{color:var(--dim);font-size:13px}
+  .spacer{flex:1}
+  button{
+    background:var(--panel-2);color:var(--text);border:1px solid var(--line);
+    border-radius:9px;padding:7px 13px;font-size:13px;cursor:pointer;font-family:inherit;
+  }
+  button:hover{border-color:var(--accent)}
+  button:active{transform:translateY(1px)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+  .card h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);
+           margin:0 0 12px;font-weight:600}
+  .hero{grid-column:1/-1;display:flex;gap:24px;align-items:center;flex-wrap:wrap}
+  .ring{position:relative;flex:none;width:150px;height:150px}
+  .ring svg{transform:rotate(-90deg)}
+  .ring .pct{position:absolute;inset:0;display:flex;flex-direction:column;
+             align-items:center;justify-content:center}
+  .ring .pct b{font-size:30px;font-weight:600;line-height:1}
+  .ring .pct span{font-size:11px;color:var(--dim);margin-top:3px}
+  .hero-info{flex:1;min-width:220px}
+  .hero-info .job{font-size:18px;font-weight:600;margin-bottom:4px;word-break:break-word}
+  .badge{display:inline-block;padding:3px 9px;border-radius:20px;font-size:12px;
+         background:var(--panel-2);border:1px solid var(--line)}
+  .badge.run{border-color:var(--accent);color:var(--accent)}
+  .badge.err{border-color:var(--err);color:var(--err)}
+  .badge.warn{border-color:var(--warn);color:var(--warn)}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:7px 14px;font-size:14px;margin-top:12px}
+  .kv dt{color:var(--dim)}
+  .kv dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
+  .temps{display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:10px}
+  .temp{background:var(--panel-2);border-radius:10px;padding:11px;text-align:center}
+  .temp .v{font-size:21px;font-weight:600;font-variant-numeric:tabular-nums}
+  .temp .l{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.05em}
+  .temp .t{font-size:11px;color:var(--dim)}
+  .trays{display:flex;gap:9px;flex-wrap:wrap}
+  .tray{display:flex;align-items:center;gap:8px;background:var(--panel-2);
+        border:1px solid var(--line);border-radius:20px;padding:6px 12px 6px 6px;font-size:13px}
+  .tray.active{border-color:var(--accent)}
+  .swatch{width:20px;height:20px;border-radius:50%;border:1px solid rgba(255,255,255,.2);flex:none}
+  .cam{width:100%;border-radius:10px;display:block;background:var(--panel-2);
+       aspect-ratio:16/9;object-fit:cover}
+  .cover{width:100%;border-radius:10px;display:block;background:var(--panel-2)}
+  .feed{list-style:none;margin:0;padding:0;max-height:280px;overflow-y:auto}
+  .feed li{padding:9px 0;border-bottom:1px solid var(--line);font-size:13px;display:flex;gap:9px}
+  .feed li:last-child{border-bottom:none}
+  .feed time{color:var(--dim);font-size:12px;flex:none;font-variant-numeric:tabular-nums}
+  .feed .error{color:var(--err)} .feed .warning{color:var(--warn)} .feed .success{color:var(--ok)}
+  .empty{color:var(--dim);font-size:13px;text-align:center;padding:20px 0}
+  .gate{max-width:340px;margin:14vh auto;text-align:center}
+  .gate input{width:100%;padding:11px;border-radius:9px;border:1px solid var(--line);
+              background:var(--panel);color:var(--text);font-size:15px;margin:14px 0;font-family:inherit}
+  .gate button{width:100%;padding:11px;background:var(--accent);border-color:var(--accent);color:#04160f;font-weight:600}
+  .msg{color:var(--err);font-size:13px;min-height:18px}
+  .hidden{display:none!important}
+  @media (max-width:520px){ .hero{gap:16px} .ring{width:120px;height:120px} }
+</style>
+</head>
+<body>
+
+<!-- Puerta de acceso -->
+<div id="gate" class="gate hidden">
+  <h1>Bambu A1 Dashboard</h1>
+  <p class="sub">Introduce la contraseña de acceso</p>
+  <input id="gate-pass" type="password" placeholder="Contraseña" autocomplete="current-password">
+  <button id="gate-btn">Entrar</button>
+  <p id="gate-msg" class="msg"></p>
+</div>
+
+<!-- Código de verificación de Bambu (email / 2FA) -->
+<div id="code-gate" class="gate hidden">
+  <h1>Verificación de Bambu</h1>
+  <p id="code-hint" class="sub"></p>
+  <input id="code-input" type="text" inputmode="numeric" placeholder="Código" autocomplete="one-time-code">
+  <button id="code-btn">Verificar</button>
+  <p id="code-msg" class="msg"></p>
+</div>
+
+<!-- Dashboard -->
+<div id="app" class="hidden">
+  <header>
+    <span id="dot" class="dot"></span>
+    <div>
+      <h1 id="printer-name">Bambu Lab A1</h1>
+      <div id="conn" class="sub">Conectando…</div>
+    </div>
+    <span class="spacer"></span>
+    <button id="btn-notify">Activar avisos</button>
+    <button id="btn-sync">Sincronizar</button>
+  </header>
+
+  <div class="grid">
+
+    <section class="card hero">
+      <div class="ring">
+        <svg width="150" height="150" viewBox="0 0 150 150">
+          <circle cx="75" cy="75" r="66" fill="none" stroke="#262d38" stroke-width="11"/>
+          <circle id="arc" cx="75" cy="75" r="66" fill="none" stroke="var(--accent)"
+                  stroke-width="11" stroke-linecap="round"
+                  stroke-dasharray="414.7" stroke-dashoffset="414.7"
+                  style="transition:stroke-dashoffset .6s ease"/>
+        </svg>
+        <div class="pct"><b id="pct">—</b><span id="layers">capa —/—</span></div>
+      </div>
+      <div class="hero-info">
+        <div id="job" class="job">Sin trabajo activo</div>
+        <span id="state-badge" class="badge">—</span>
+        <dl class="kv">
+          <dt>Tiempo restante</dt><dd id="remaining">—</dd>
+          <dt>Termina a las</dt><dd id="eta">—</dd>
+          <dt>Etapa</dt><dd id="stage">—</dd>
+          <dt>Velocidad</dt><dd id="speed">—</dd>
+        </dl>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Temperaturas</h2>
+      <div class="temps">
+        <div class="temp"><div class="l">Boquilla</div><div class="v" id="t-nozzle">—</div><div class="t" id="t-nozzle-target"></div></div>
+        <div class="temp"><div class="l">Cama</div><div class="v" id="t-bed">—</div><div class="t" id="t-bed-target"></div></div>
+        <div class="temp"><div class="l">Ventilador</div><div class="v" id="t-fan">—</div><div class="t">pieza</div></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Filamento</h2>
+      <div id="trays" class="trays"><div class="empty">Sin datos de AMS</div></div>
+    </section>
+
+    <section class="card" id="card-cover">
+      <h2>Modelo</h2>
+      <img id="cover" class="cover" alt="Portada del modelo">
+      <div id="cover-title" class="sub" style="margin-top:9px"></div>
+    </section>
+
+    <section class="card" id="card-cam">
+      <h2>Cámara <span id="cam-age" class="sub"></span></h2>
+      <img id="cam" class="cam" alt="Cámara de la impresora">
+      <div class="sub" style="margin-top:9px">La cámara requiere el agente local en tu red.</div>
+    </section>
+
+    <section class="card">
+      <h2>Actividad</h2>
+      <ul id="feed" class="feed"><li class="empty">Sin eventos todavía</li></ul>
+    </section>
+
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const RING = 2 * Math.PI * 66;
+
+let camTimer = null;
+
+// --------------------------------------------------------------------------
+// Acceso
+// --------------------------------------------------------------------------
+
+async function checkSession() {
+  const r = await fetch('/api/session').then((x) => x.json());
+  if (r.authed) { start(); } else { $('gate').classList.remove('hidden'); }
+}
+
+$('gate-btn').onclick = async () => {
+  const res = await fetch('/api/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: $('gate-pass').value }),
+  });
+  if (res.ok) { $('gate').classList.add('hidden'); start(); }
+  else { $('gate-msg').textContent = 'Contraseña incorrecta'; }
+};
+$('gate-pass').onkeydown = (e) => { if (e.key === 'Enter') $('gate-btn').click(); };
+
+$('code-btn').onclick = async () => {
+  const res = await fetch('/api/login-code', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code: $('code-input').value }),
+  });
+  const j = await res.json().catch(() => ({}));
+  if (res.ok) { $('code-gate').classList.add('hidden'); $('app').classList.remove('hidden'); }
+  else { $('code-msg').textContent = j.error || 'Código rechazado'; }
+};
+$('code-input').onkeydown = (e) => { if (e.key === 'Enter') $('code-btn').click(); };
+
+// --------------------------------------------------------------------------
+// Arranque + WebSocket
+// --------------------------------------------------------------------------
+
+function start() {
+  $('app').classList.remove('hidden');
+  connectWs();
+  startCameraLoop();
+}
+
+function connectWs() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+  ws.onmessage = (ev) => {
+    const { type, payload } = JSON.parse(ev.data);
+    if (type === 'snapshot') {
+      renderStatus(payload.status, payload.connected);
+      if (payload.printer) renderPrinter(payload.printer);
+      if (payload.state) renderState(payload.state);
+      if (payload.task) renderTask(payload.task);
+      renderFeed(payload.notifications || []);
+      handleLoginPending(payload.loginPending);
+    }
+    else if (type === 'state') renderState(payload);
+    else if (type === 'status') renderStatus(payload);
+    else if (type === 'printer') renderPrinter(payload);
+    else if (type === 'task') renderTask(payload);
+    else if (type === 'camera') refreshCamera();
+    else if (type === 'notification') { pushFeed(payload); notifyBrowser(payload); }
+  };
+
+  ws.onclose = () => {
+    $('dot').classList.remove('on');
+    $('conn').textContent = 'Desconectado del servidor, reintentando…';
+    setTimeout(connectWs, 3000);
+  };
+}
+
+function handleLoginPending(pending) {
+  if (!pending) return;
+  $('app').classList.add('hidden');
+  $('code-gate').classList.remove('hidden');
+  $('code-hint').textContent = pending === 'tfa'
+    ? 'Introduce el código de tu app de autenticación (2FA).'
+    : 'Bambu ha enviado un código a tu email. Introdúcelo aquí.';
+}
+
+// --------------------------------------------------------------------------
+// Render
+// --------------------------------------------------------------------------
+
+function renderStatus(s, connected) {
+  const on = connected ?? s.connected;
+  $('dot').classList.toggle('on', Boolean(on));
+  $('conn').textContent = s.detail || (on ? 'Conectado' : 'Desconectado');
+}
+
+function renderPrinter(p) {
+  $('printer-name').textContent = p.name || 'Bambu Lab A1';
+}
+
+function renderState(s) {
+  const pct = s.percent ?? 0;
+  $('arc').style.strokeDashoffset = String(RING * (1 - pct / 100));
+  $('pct').textContent = s.percent != null ? `${s.percent}%` : '—';
+  $('layers').textContent = s.layer != null && s.totalLayers
+    ? `capa ${s.layer}/${s.totalLayers}` : 'capa —/—';
+
+  $('job').textContent = s.jobName || 'Sin trabajo activo';
+
+  const badge = $('state-badge');
+  badge.textContent = s.stateText;
+  badge.className = 'badge' + (s.hasErrors ? ' err'
+    : s.state === 'RUNNING' ? ' run'
+    : s.state === 'PAUSE' ? ' warn' : '');
+
+  $('remaining').textContent = s.remainingText || '—';
+  $('eta').textContent = s.etaEpochMs
+    ? new Date(s.etaEpochMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : '—';
+  $('stage').textContent = s.stage || '—';
+  $('speed').textContent = s.speedPercent ? `${s.speedPercent}%` : '—';
+
+  const t = s.temps || {};
+  $('t-nozzle').textContent = t.nozzle != null ? `${Math.round(t.nozzle)}°` : '—';
+  $('t-nozzle-target').textContent = t.nozzleTarget ? `→ ${Math.round(t.nozzleTarget)}°` : '';
+  $('t-bed').textContent = t.bed != null ? `${Math.round(t.bed)}°` : '—';
+  $('t-bed-target').textContent = t.bedTarget ? `→ ${Math.round(t.bedTarget)}°` : '';
+  $('t-fan').textContent = s.fans?.part != null ? `${s.fans.part}%` : '—';
+
+  renderTrays(s);
+  document.title = s.printing && s.percent != null
+    ? `${s.percent}% · Bambu A1` : 'Bambu A1 · Dashboard';
+}
+
+function renderTrays(s) {
+  const box = $('trays');
+  const items = [];
+
+  for (const unit of s.ams || []) {
+    for (const tray of unit.trays) {
+      if (tray.empty) continue;
+      items.push({
+        label: tray.subBrand || tray.type,
+        color: tray.color,
+        active: !s.usingExternalSpool && s.activeTray === tray.id,
+      });
+    }
+  }
+  if (s.externalTray?.type) {
+    items.push({
+      label: `${s.externalTray.type} (ext)`,
+      color: s.externalTray.color,
+      active: s.usingExternalSpool,
+    });
+  }
+
+  if (items.length === 0) { box.innerHTML = '<div class="empty">Sin datos de filamento</div>'; return; }
+
+  box.innerHTML = items.map((i) => `
+    <div class="tray${i.active ? ' active' : ''}">
+      <span class="swatch" style="background:${i.color || '#555'}"></span>
+      <span>${escapeHtml(i.label || '?')}</span>
+    </div>`).join('');
+}
+
+function renderTask(t) {
+  if (!t) return;
+  if (t.cover) { $('cover').src = t.cover; $('card-cover').classList.remove('hidden'); }
+  $('cover-title').textContent = t.title || '';
+}
+
+// --------------------------------------------------------------------------
+// Cámara
+// --------------------------------------------------------------------------
+
+function refreshCamera() {
+  const img = $('cam');
+  img.onerror = () => { $('card-cam').classList.add('hidden'); };
+  img.onload = () => { $('card-cam').classList.remove('hidden'); };
+  img.src = `/api/camera.jpg?t=${Date.now()}`;
+}
+
+function startCameraLoop() {
+  refreshCamera();
+  clearInterval(camTimer);
+  camTimer = setInterval(refreshCamera, 10_000);
+}
+
+// --------------------------------------------------------------------------
+// Feed + notificaciones del navegador
+// --------------------------------------------------------------------------
+
+function renderFeed(events) {
+  const feed = $('feed');
+  if (!events.length) { feed.innerHTML = '<li class="empty">Sin eventos todavía</li>'; return; }
+  feed.innerHTML = events.map(feedItem).join('');
+}
+
+function pushFeed(e) {
+  const feed = $('feed');
+  if (feed.querySelector('.empty')) feed.innerHTML = '';
+  feed.insertAdjacentHTML('afterbegin', feedItem(e));
+  while (feed.children.length > 40) feed.lastElementChild.remove();
+}
+
+function feedItem(e) {
+  const time = new Date(e.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return `<li><time>${time}</time><span class="${e.level || ''}">${escapeHtml(e.text)}</span></li>`;
+}
+
+$('btn-notify').onclick = async () => {
+  const perm = await Notification.requestPermission();
+  $('btn-notify').textContent = perm === 'granted' ? 'Avisos activos' : 'Avisos bloqueados';
+};
+
+function notifyBrowser(e) {
+  if (Notification.permission !== 'granted' || e.silent) return;
+  new Notification('Bambu Lab A1', { body: e.text, tag: e.type });
+}
+
+$('btn-sync').onclick = () => fetch('/api/resync', { method: 'POST' });
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+checkSession();
+</script>
+</body>
+</html>

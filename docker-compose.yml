@@ -1,0 +1,22 @@
+services:
+  dashboard:
+    build: .
+    container_name: bambu-dashboard
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+
+  # Descomenta esto SOLO si corres el compose dentro de tu red local
+  # (el agente necesita ver la IP de la impresora).
+  #
+  # camera-agent:
+  #   build: .
+  #   container_name: bambu-camera-agent
+  #   restart: unless-stopped
+  #   command: ["node", "agent/camera-agent.js"]
+  #   env_file:
+  #     - .env

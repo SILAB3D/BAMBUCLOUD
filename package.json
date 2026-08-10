@@ -1,0 +1,23 @@
+{
+  "name": "bambucloud-dashboard",
+  "version": "1.0.0",
+  "description": "Dashboard web para monitorizar una Bambu Lab A1 desde cualquier lugar via Bambu Cloud",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "agent": "node agent/camera-agent.js",
+    "check": "node --check src/server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-session": "^1.18.0",
+    "mqtt": "^5.7.0",
+    "ws": "^8.17.0"
+  },
+  "license": "MIT"
+}
