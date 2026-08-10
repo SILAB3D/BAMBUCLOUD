@@ -60,6 +60,8 @@ Abre `http://tu-servidor:3000`.
 
 **Primer arranque**: si tu cuenta tiene verificación por email o 2FA, el dashboard te pedirá el código en pantalla. Introdúcelo y sigue.
 
+Solo hace falta **una vez**: el `accessToken` se guarda en `.bambu-token.json` (gitignored, permisos 600) y los reinicios siguientes lo reutilizan. Si Bambu lo rechaza, el servidor lo borra y vuelve a pedirte código en el dashboard. Para forzar un login nuevo, borra ese fichero.
+
 Pon un reverse proxy con HTTPS delante (Caddy es lo más corto):
 
 ```
@@ -67,6 +69,27 @@ tu-dominio.com {
     reverse_proxy localhost:3000
 }
 ```
+
+### 1b. Alternativa gratuita: Render
+
+`render.yaml` despliega el dashboard en el plan gratuito de Render (sin tarjeta):
+*New → Blueprint* → elige este repo. Render pedirá `BAMBU_EMAIL`, `BAMBU_TOKEN` y
+`DASHBOARD_PASSWORD`.
+
+El token sale de tu instalación local, tras haber hecho el login una vez:
+
+```bash
+node -e "console.log(require('./.bambu-token.json').token)"
+```
+
+Dos límites del plan gratuito que conviene tener presentes:
+
+- **Se duerme tras 15 min sin visitas.** El primer acceso tarda ~1 min en despertar y,
+  mientras duerme, no hay conexión MQTT: no se envían notificaciones.
+- **No hay disco persistente.** Por eso el token va en `BAMBU_TOKEN` en vez de en
+  fichero. Si algún día Bambu lo rechaza, actualiza esa variable con uno nuevo.
+- Las sesiones viven en memoria, así que cada vez que el servicio despierta hay que
+  volver a introducir `DASHBOARD_PASSWORD`.
 
 ### 2. Agente de cámara (opcional, en tu red)
 
@@ -129,8 +152,10 @@ código   POST /v1/user-service/user/sendemail/code
 equipos  GET  /v1/iot-service/api/user/bind
 tareas   GET  /v1/user-service/my/tasks?limit=10    → portada del job
 
+prefs    GET  /v1/design-user-service/my/preference → uid (para el usuario MQTT)
+
 MQTT     mqtts://us.mqtt.bambulab.com:8883   (cn.mqtt… para China)
-usuario  u_<uid>        ← sale del payload del JWT
+usuario  u_<uid>
 password <accessToken>
 sub      device/<SERIAL>/report
 pub      device/<SERIAL>/request
@@ -191,7 +216,8 @@ agent/camera-agent.js agente de cámara para la LAN
 ## Notas y limitaciones
 
 - La API de Bambu Cloud **no es pública**. Funciona hoy; Bambu puede cambiarla sin aviso.
-- El `accessToken` caduca. El servidor detecta el rechazo MQTT (`Not authorized`) y rehace el login solo.
+- El `accessToken` que devuelve Bambu hoy es **opaco**, no un JWT: no se le pueden leer claims. El usuario MQTT (`u_<uid>`) se obtiene de `/v1/design-user-service/my/preference`.
+- El `accessToken` caduca. El servidor detecta el rechazo MQTT (`Not authorized`), borra el token cacheado y rehace el login solo; si la cuenta usa código por email o 2FA, te lo pide en el dashboard.
 - Tus credenciales viven en el `.env` del servidor. Si el VPS es compartido, considera usar `BAMBU_TOKEN` en lugar de la contraseña.
 - Un `pushall` cada 60 s mantiene el estado fresco; abusar de esa frecuencia puede hacer que la nube te limite.
 - La cámara por snapshots (puerto 6000) solo existe en **A1, A1 Mini, P1P y P1S**. Los modelos nuevos solo dan RTSP.

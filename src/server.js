@@ -14,6 +14,7 @@ import 'dotenv/config';
 import express from 'express';
 import session from 'express-session';
 import http from 'node:http';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
@@ -26,6 +27,9 @@ import { Notifier } from './notifier.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const PORT = Number(process.env.PORT || 3000);
+// Configurable para poder apuntarlo a un volumen persistente en produccion:
+// si el token se pierde en cada reinicio, la cuenta vuelve a pedir codigo.
+const TOKEN_FILE = process.env.TOKEN_FILE || path.join(__dirname, '..', '.bambu-token.json');
 const DASH_PASSWORD = process.env.DASHBOARD_PASSWORD || '';
 const AGENT_TOKEN = process.env.AGENT_TOKEN || '';
 
@@ -50,6 +54,36 @@ const app_state = {
   camera: null, // { jpegBase64, at } enviado por el agente local
   loginPending: null, // 'emailCode' | 'tfa' | null
 };
+
+// ---------------------------------------------------------------------------
+// Cache del accessToken en disco
+//
+// Las cuentas con verificacion por email piden un codigo nuevo en cada login,
+// y eso obliga a estar delante del dashboard cada vez que reinicia el proceso.
+// Guardar el token vale hasta que caduque (unos meses).
+// ---------------------------------------------------------------------------
+
+function loadCachedToken() {
+  try {
+    const { token, expiresAt } = JSON.parse(fs.readFileSync(TOKEN_FILE, 'utf8'));
+    if (!token) return null;
+    if (expiresAt && Date.now() > expiresAt - 60_000) {
+      console.log('[token] el token en cache ha caducado');
+      return null;
+    }
+    return token;
+  } catch {
+    return null; // no existe o esta corrupto: login normal
+  }
+}
+
+function saveToken({ token, expiresAt }) {
+  try {
+    fs.writeFileSync(TOKEN_FILE, JSON.stringify({ token, expiresAt }), { mode: 0o600 });
+  } catch (err) {
+    console.error('[token] no se pudo guardar:', err.message);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Broadcast a los navegadores conectados
@@ -104,8 +138,31 @@ function wireCloud(cloud) {
   cloud.on('auth-expired', async () => {
     console.warn('[cloud] token caducado, reintentando login');
     cloud.disconnect();
+    fs.rmSync(TOKEN_FILE, { force: true });
+    cloud.mqttUsername = null;
+
     const res = await cloud.login();
-    if (res.ok) cloud.connect();
+    if (res.ok) {
+      await cloud.resolveMqttUsername();
+      cloud.connect();
+      return;
+    }
+    // Cuenta con verificacion por email o 2FA: el relogin no puede ser
+    // automatico. Pedimos el codigo en el dashboard en vez de quedarnos
+    // callados y desconectados.
+    if (res.needs) {
+      app_state.loginPending = res.needs;
+      app_state.status = {
+        connected: false,
+        detail:
+          res.needs === 'emailCode'
+            ? 'El token caduco. Bambu envio un codigo nuevo a tu email.'
+            : 'El token caduco. Introduce tu codigo 2FA.',
+      };
+    } else {
+      app_state.status = { connected: false, detail: `Relogin fallido: ${res.error}` };
+    }
+    broadcast('status', app_state.status);
   });
 }
 
@@ -117,37 +174,54 @@ async function startCloud() {
     email: process.env.BAMBU_EMAIL,
     password: process.env.BAMBU_PASSWORD,
     region: process.env.BAMBU_REGION || 'global',
-    accessToken: process.env.BAMBU_TOKEN || null,
+    // El token en cache manda sobre BAMBU_TOKEN: la variable de entorno es
+    // solo la semilla inicial. Al reves, un BAMBU_TOKEN caducado ganaria para
+    // siempre al token nuevo obtenido desde el dashboard.
+    accessToken: loadCachedToken() || process.env.BAMBU_TOKEN || null,
     serial: process.env.PRINTER_SERIAL || null,
   });
   app_state.cloud = cloud;
   wireCloud(cloud);
+  cloud.on('token', saveToken);
 
-  if (!cloud.accessToken) {
-    const res = await cloud.login();
-    if (!res.ok) {
-      if (res.needs) {
-        app_state.loginPending = res.needs;
-        app_state.status = {
-          connected: false,
-          detail:
-            res.needs === 'emailCode'
-              ? 'Bambu envio un codigo a tu email. Introducelo en el dashboard.'
-              : 'Introduce tu codigo 2FA en el dashboard.',
-        };
-        broadcast('status', app_state.status);
-        return;
-      }
-      app_state.status = { connected: false, detail: res.error };
-      console.error('[cloud] login fallido:', res.error);
+  if (cloud.accessToken) {
+    cloud._setToken(cloud.accessToken);
+    try {
+      await finishStartup(cloud);
+      return;
+    } catch (err) {
+      if (!err.unauthorized) throw err;
+      // El token cacheado ya no sirve: lo tiramos y hacemos login normal.
+      console.warn('[cloud] token cacheado rechazado, rehaciendo login');
+      fs.rmSync(TOKEN_FILE, { force: true });
+      cloud.accessToken = null;
+      cloud.mqttUsername = null;
+    }
+  }
+
+  const res = await cloud.login();
+  if (!res.ok) {
+    if (res.needs) {
+      app_state.loginPending = res.needs;
+      app_state.status = {
+        connected: false,
+        detail:
+          res.needs === 'emailCode'
+            ? 'Bambu envio un codigo a tu email. Introducelo en el dashboard.'
+            : 'Introduce tu codigo 2FA en el dashboard.',
+      };
+      broadcast('status', app_state.status);
       return;
     }
-  } else {
-    cloud._setToken(cloud.accessToken);
+    app_state.status = { connected: false, detail: res.error };
+    console.error('[cloud] login fallido:', res.error);
+    return;
   }
 
   await finishStartup(cloud);
 }
+
+let taskTimer = null;
 
 async function finishStartup(cloud) {
   app_state.loginPending = null;
@@ -166,9 +240,22 @@ async function finishStartup(cloud) {
   app_state.printer = { serial: chosen.serial, name: chosen.name, model: chosen.model };
   broadcast('printer', app_state.printer);
 
-  cloud.connect();
+  // Un fallo aqui (token raro, MQTT caido) tiene que verse en el dashboard,
+  // no reventar el proceso: esto se llama tambien desde una ruta Express.
+  try {
+    await cloud.resolveMqttUsername();
+    cloud.connect();
+  } catch (err) {
+    app_state.status = { connected: false, detail: `No se pudo conectar a MQTT: ${err.message}` };
+    broadcast('status', app_state.status);
+    console.error('[cloud]', err.message);
+  }
+
   refreshTask();
-  setInterval(refreshTask, 60_000);
+  // finishStartup puede correr mas de una vez (login diferido por codigo):
+  // un solo intervalo, no uno por llamada.
+  clearInterval(taskTimer);
+  taskTimer = setInterval(refreshTask, 60_000);
 }
 
 /** La portada del print vive en la API REST, no en MQTT. */
@@ -261,7 +348,11 @@ app.post('/api/printer', requireAuth, async (req, res) => {
   cloud.state = {};
   app_state.printer = { serial, name: device.name, model: device.model };
   app_state.normalized = null;
-  cloud.connect();
+  try {
+    cloud.connect();
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
   broadcast('printer', app_state.printer);
   res.json({ ok: true });
 });
@@ -278,7 +369,11 @@ app.post('/api/login-code', requireAuth, async (req, res) => {
       ? await cloud.loginWithTfa(code)
       : await cloud.loginWithEmailCode(code);
   if (!result.ok) return res.status(401).json({ error: result.error });
-  await finishStartup(cloud);
+  try {
+    await finishStartup(cloud);
+  } catch (err) {
+    return res.status(502).json({ error: err.message });
+  }
   res.json({ ok: true });
 });
 
@@ -345,6 +440,13 @@ wss.on('connection', (ws) => {
 server.listen(PORT, () => {
   console.log(`Dashboard escuchando en http://localhost:${PORT}`);
   startCloud().catch((err) => console.error('[startup]', err));
+});
+
+// Red de seguridad: este proceso vive semanas en un VPS. Un rechazo suelto
+// (la nube de Bambu cortando una peticion, por ejemplo) no puede tirar abajo
+// el dashboard entero.
+process.on('unhandledRejection', (err) => {
+  console.error('[unhandledRejection]', err?.stack || err);
 });
 
 process.on('SIGTERM', () => {

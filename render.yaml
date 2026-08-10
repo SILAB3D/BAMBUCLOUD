@@ -1,0 +1,29 @@
+# Blueprint de Render (https://render.com/docs/blueprint-spec).
+#
+# El plan gratuito no admite disco persistente, asi que el accessToken no
+# sobrevive a un reinicio. Por eso se inyecta como BAMBU_TOKEN: con el, el
+# servidor se salta el login y nunca vuelve a pedir el codigo del email.
+#
+# BAMBU_PASSWORD no se pone a proposito: con el token no hace falta, y asi la
+# contrasena de la cuenta de Bambu no vive en el servidor.
+services:
+  - type: web
+    name: bambu-dashboard
+    runtime: docker
+    plan: free
+    region: frankfurt
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: BAMBU_REGION
+        value: global
+      # sync:false = Render la pide al crear el servicio y no se guarda en git.
+      - key: BAMBU_EMAIL
+        sync: false
+      - key: BAMBU_TOKEN
+        sync: false
+      - key: DASHBOARD_PASSWORD
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true

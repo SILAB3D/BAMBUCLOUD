@@ -9,6 +9,10 @@ services:
       - .env
     environment:
       - NODE_ENV=production
+    volumes:
+      # Conserva el accessToken entre reinicios. Sin esto, cada `up` vuelve a
+      # pedir el codigo de verificacion por email.
+      - bambu-token:/data
 
   # Descomenta esto SOLO si corres el compose dentro de tu red local
   # (el agente necesita ver la IP de la impresora).
@@ -20,3 +24,6 @@ services:
   #   command: ["node", "agent/camera-agent.js"]
   #   env_file:
   #     - .env
+
+volumes:
+  bambu-token:

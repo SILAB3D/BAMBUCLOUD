@@ -32,6 +32,7 @@ const PATHS = {
   emailCode: '/v1/user-service/user/sendemail/code',
   bind: '/v1/iot-service/api/user/bind',
   tasks: '/v1/user-service/my/tasks?limit=10',
+  preference: '/v1/design-user-service/my/preference',
 };
 
 const PUSH_ALL = JSON.stringify({ pushing: { sequence_id: '0', command: 'pushall' } });
@@ -50,14 +51,25 @@ function decodeJwtPayload(token) {
 }
 
 /**
- * Del JWT sale el usuario MQTT. Bambu usa el campo "username" si existe,
- * y si no "u_" + uid. Es exactamente lo que hace PrintSphere.
+ * Del JWT sale el usuario MQTT. Bambu no ha sido consistente con el nombre
+ * del claim segun la epoca del token: unas veces "username" ya viene con el
+ * prefijo "u_", otras solo hay el uid crudo bajo otro nombre. Probamos todos
+ * los que se han visto en circulacion antes de rendirnos.
  */
 export function mqttUsernameFromToken(token) {
   const payload = decodeJwtPayload(token);
   if (!payload) return null;
-  if (payload.username) return payload.username;
-  if (payload.uid) return `u_${payload.uid}`;
+
+  for (const key of ['username', 'preferred_username']) {
+    const v = payload[key];
+    if (typeof v === 'string' && v) return v.startsWith('u_') ? v : `u_${v}`;
+  }
+  for (const key of ['uid', 'userId', 'user_id', 'sub']) {
+    const v = payload[key];
+    // "sub" a veces es el uid y a veces un identificador con letras: solo
+    // sirve si es numerico.
+    if (v !== undefined && v !== null && /^\d+$/.test(String(v))) return `u_${v}`;
+  }
   return null;
 }
 
@@ -237,7 +249,12 @@ export class BambuCloud extends EventEmitter {
 
   /** Impresoras vinculadas a la cuenta. */
   async listDevices() {
-    const { json } = await this._get(PATHS.bind);
+    const { status, json } = await this._get(PATHS.bind);
+    if (status === 401 || status === 403) {
+      const err = new Error('El token de Bambu ya no vale');
+      err.unauthorized = true;
+      throw err;
+    }
     const devices = json?.devices || json?.data?.devices || [];
     this.devices = devices.map((d) => ({
       serial: d.dev_id,
@@ -249,6 +266,29 @@ export class BambuCloud extends EventEmitter {
     }));
     this.emit('devices', this.devices);
     return this.devices;
+  }
+
+  /**
+   * Usuario MQTT (u_<uid>). Sale del JWT cuando el token trae el claim; si no,
+   * lo pedimos a la API de preferencias, que devuelve el uid de la cuenta.
+   * Hay que llamarlo antes de connect().
+   */
+  async resolveMqttUsername() {
+    if (this.mqttUsername) return this.mqttUsername;
+
+    this.mqttUsername = mqttUsernameFromToken(this.accessToken);
+    if (this.mqttUsername) return this.mqttUsername;
+
+    const claims = Object.keys(decodeJwtPayload(this.accessToken) || {});
+    console.warn('[cloud] el JWT no trae usuario MQTT; claims:', claims.join(', ') || '(ninguno)');
+
+    const { status, json } = await this._get(PATHS.preference);
+    const uid = json?.uid ?? json?.data?.uid;
+    if (uid) {
+      this.mqttUsername = `u_${uid}`;
+      return this.mqttUsername;
+    }
+    throw new Error(`No se pudo derivar el usuario MQTT (preference HTTP ${status})`);
   }
 
   /**
