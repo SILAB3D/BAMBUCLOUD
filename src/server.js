@@ -277,6 +277,40 @@ async function refreshTask() {
 }
 
 // ---------------------------------------------------------------------------
+// Keep-alive
+//
+// Los planes gratuitos (Render) duermen el servicio tras 15 min sin trafico
+// ENTRANTE. Dormido no hay MQTT, asi que no se detecta el fin de la impresion
+// ni se envian avisos. Mientras hay un trabajo en curso el servidor se pide a
+// si mismo /api/health y con eso cuenta como trafico entrante.
+//
+// Solo mientras imprime, a proposito: despierto 24/7 son ~720 h/mes y el plan
+// gratuito da 750, sin margen para un despiste.
+// ---------------------------------------------------------------------------
+
+const KEEPALIVE_URL = process.env.KEEPALIVE_URL || process.env.RENDER_EXTERNAL_URL || null;
+const KEEPALIVE_MS = Number(process.env.KEEPALIVE_MS || 10 * 60_000);
+// PAUSE entra: el trabajo sigue vivo y queremos avisar cuando se reanude.
+const ACTIVE_STATES = new Set(['RUNNING', 'PREPARE', 'PAUSE']);
+
+function printJobActive() {
+  return ACTIVE_STATES.has(app_state.normalized?.state);
+}
+
+async function keepAlive() {
+  if (!KEEPALIVE_URL || !printJobActive()) return;
+  try {
+    const res = await fetch(new URL('/api/health', KEEPALIVE_URL), {
+      headers: { 'user-agent': 'bambucloud-keepalive' },
+      signal: AbortSignal.timeout(20_000),
+    });
+    console.log(`[keepalive] ping ${res.status}`);
+  } catch (err) {
+    console.error('[keepalive]', err.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // HTTP
 // ---------------------------------------------------------------------------
 
@@ -413,6 +447,8 @@ app.get('/api/health', (req, res) => {
     lastMessageAt: app_state.cloud?.lastMessageAt || null,
     cameraAgeMs: app_state.camera ? Date.now() - app_state.camera.at : null,
     uptimeSec: Math.round(process.uptime()),
+    jobActive: printJobActive(),
+    keepAlive: Boolean(KEEPALIVE_URL),
   });
 });
 
@@ -439,6 +475,10 @@ wss.on('connection', (ws) => {
 
 server.listen(PORT, () => {
   console.log(`Dashboard escuchando en http://localhost:${PORT}`);
+  if (KEEPALIVE_URL) {
+    console.log(`[keepalive] activo cada ${Math.round(KEEPALIVE_MS / 60000)} min mientras imprime`);
+    setInterval(keepAlive, KEEPALIVE_MS);
+  }
   startCloud().catch((err) => console.error('[startup]', err));
 });
 
