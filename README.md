@@ -186,13 +186,34 @@ hace una vez por móvil.
 Botón del engranaje, arriba a la derecha → código **1510** (cambiable con `ADMIN_CODE`).
 
 - **Enviar notificaciones**: interruptor general de los avisos de la app.
-- **La impresión se está enfriando** / **La impresión puede retirarse**: interruptores
-  individuales de cada disparador.
-- **Enviar aviso de prueba**: manda un push real a los dispositivos suscritos.
+- **Un interruptor por tipo de aviso**: impresión iniciada, terminada, enfriándose, lista para
+  retirar, en pausa, reanudada, fallida, atención requerida, errores HMS e hitos de progreso.
+  El catálogo se define en `TRIGGERS` (`src/notifier.js`) y la interfaz se genera desde ahí:
+  añadir un tipo allí basta para que aparezca su interruptor.
+- **Enviar aviso de prueba**: suscribe este dispositivo si hacía falta y manda un push real.
+  Si algo falla, dice exactamente qué (permiso, claves del servidor, Service Worker…).
 - **Cerrar sesión** de Bambu Lab: corta el MQTT y borra el token guardado. Para reconectar
   hará falta el código que Bambu envía por email.
 
-Los ajustes se guardan en disco y valen para todos los dispositivos.
+Los ajustes se guardan en disco y valen para todos los dispositivos. Un aviso desactivado
+sigue registrándose en el panel de actividad; lo que se corta es el envío.
+
+### Si no llegan las notificaciones
+
+El panel de administración diagnostica las tres capas por separado:
+
+1. **Servidor**: si dice «sin claves VAPID», faltan `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`
+   en las variables de entorno. Sin ellas no hay push, solo avisos con la web abierta.
+2. **Este dispositivo**: si no aparece «suscrito ✓», el texto explica por qué (permiso no
+   concedido, bloqueado en el navegador, en iPhone sin instalar la app…).
+3. Los envíos y las altas quedan en el log del servidor (`[push] alta de dispositivo…`,
+   `[push] prueba enviada a N dispositivo(s)`).
+
+### Ventana de bienvenida
+
+La primera vez explica cómo instalar la app y cómo permitir los avisos. Aparece como mucho
+**3 veces y nunca dos veces el mismo día**, y deja de salir en cuanto la app está instalada.
+El recuento vive en `localStorage`, así que es por dispositivo.
 
 ### Otros canales
 
@@ -309,7 +330,7 @@ Comandos útiles publicados en `device/<SERIAL>/request`:
 src/bambu-cloud.js       login, listado de equipos, MQTT, reconexión, refresh de token
 src/normalize.js         report crudo → objeto limpio (estados, etapas, AMS, HMS)
 src/job-cycle.js         fases impresión → enfriamiento → retirada (con temporizador)
-src/notifier.js          detección de transiciones + historial de 15 días + envío
+src/notifier.js          catálogo de avisos + transiciones + historial de 15 días + envío
 src/push.js              Web Push (VAPID): alta, baja y purga de suscripciones muertas
 src/store.js             persistencia JSON de historial, ajustes, suscripciones y fase
 src/server.js            Express + WebSocket + endpoint de cámara + administración

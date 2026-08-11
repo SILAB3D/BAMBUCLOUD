@@ -22,7 +22,7 @@ import crypto from 'node:crypto';
 
 import { BambuCloud } from './bambu-cloud.js';
 import { normalize } from './normalize.js';
-import { Notifier, HISTORY_DAYS } from './notifier.js';
+import { Notifier, HISTORY_DAYS, TRIGGERS } from './notifier.js';
 import { Store } from './store.js';
 import { PushHub } from './push.js';
 import { JobCycle } from './job-cycle.js';
@@ -563,13 +563,19 @@ app.post('/api/push/unsubscribe', requireAuth, (req, res) => {
 
 /** Comprobacion desde el panel: manda un aviso real a este dispositivo. */
 app.post('/api/push/test', requireAuth, requireAdmin, async (req, res) => {
+  if (!push.enabled) {
+    return res.status(503).json({
+      error: 'El servidor no tiene claves VAPID configuradas (VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY)',
+    });
+  }
   const result = await push.send({
     title: app_state.printer?.name || 'Bambu Lab',
     body: '🔔 Prueba de notificaciones. Si lees esto, funciona.',
     tag: 'test',
     url: '/',
   });
-  res.json({ ok: true, ...result });
+  console.log(`[push] prueba enviada a ${result.sent} dispositivo(s)`);
+  res.json({ ok: true, devices: push.count, ...result });
 });
 
 // ---------------------------------------------------------------------------
@@ -611,6 +617,9 @@ app.get('/api/admin/status', requireAuth, (req, res) => {
 app.get('/api/settings', requireAuth, (req, res) => {
   res.json({
     settings: notifier.settings,
+    // El cliente dibuja un interruptor por entrada: la lista manda.
+    triggers: TRIGGERS,
+    progressStep: notifier.progressStep,
     push: { supported: push.enabled, publicKey: push.publicKey, devices: push.count },
     channels: {
       telegram: Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID),

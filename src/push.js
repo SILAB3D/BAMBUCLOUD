@@ -52,9 +52,19 @@ export class PushHub {
   /** Alta idempotente: el navegador reenvia la misma suscripcion en cada carga. */
   subscribe(sub) {
     if (!sub?.endpoint) return { ok: false, error: 'Suscripcion invalida' };
+    if (!sub.keys?.p256dh || !sub.keys?.auth) {
+      return { ok: false, error: 'Suscripcion sin claves de cifrado' };
+    }
+    const before = this.subscriptions.length;
     const list = this.subscriptions.filter((s) => s.endpoint !== sub.endpoint);
     list.push({ endpoint: sub.endpoint, keys: sub.keys, at: Date.now() });
     this.subscriptions = list;
+    // Rastro en el log: al depurar "no me llegan los avisos" lo primero que
+    // hay que saber es si el alta llego siquiera al servidor.
+    console.log(
+      `[push] ${list.length > before ? 'alta' : 'renovacion'} de dispositivo ` +
+        `(${list.length} en total) · ${sub.endpoint.slice(0, 48)}…`,
+    );
     return { ok: true, count: list.length };
   }
 

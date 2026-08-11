@@ -67,6 +67,46 @@ img{max-width:100%}
 .defs{position:absolute;width:0;height:0}
 
 /* ==========================================================================
+   Pantalla de carga
+   ========================================================================== */
+.splash{
+  position:fixed;inset:0;z-index:200;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:0;
+  background:
+    radial-gradient(620px 420px at 50% 38%, rgba(62,201,255,.13), transparent 62%),
+    var(--bg);
+  transition:opacity .45s var(--ease),visibility .45s;
+}
+.splash.done{opacity:0;visibility:hidden;pointer-events:none}
+.splash-holo{
+  width:clamp(150px,42vw,196px);aspect-ratio:1;position:relative;
+  animation:splash-in .7s var(--ease) both;
+}
+/* Aro de resplandor que respira detras de la figura. */
+.splash-holo::before{
+  content:"";position:absolute;inset:-14%;border-radius:50%;
+  background:radial-gradient(circle,rgba(62,201,255,.20),transparent 68%);
+  animation:splash-pulse 2s ease-in-out infinite;
+}
+.splash-name{
+  margin-top:22px;font-size:19px;font-weight:660;letter-spacing:-.015em;
+  animation:fade-up .6s var(--ease) .12s both;
+}
+.splash-sub{
+  margin-top:3px;font-size:12px;color:var(--faint);letter-spacing:.06em;text-transform:uppercase;
+  animation:fade-up .6s var(--ease) .2s both;
+}
+.splash-bar{
+  margin-top:26px;width:clamp(120px,42vw,190px);height:3px;border-radius:99px;overflow:hidden;
+  background:rgba(255,255,255,.08);animation:fade-in .5s var(--ease) .28s both;
+}
+.splash-bar i{
+  display:block;height:100%;width:0;border-radius:99px;
+  background:linear-gradient(90deg,var(--accent),var(--accent-2));
+  animation:splash-fill 1.5s cubic-bezier(.5,.05,.2,1) forwards;
+}
+
+/* ==========================================================================
    Puertas de acceso
    ========================================================================== */
 .gate{max-width:360px;margin:0 auto;padding:14vh 20px 40px;text-align:center;
@@ -360,25 +400,6 @@ img{max-width:100%}
    ========================================================================== */
 .fil{flex:1;display:flex;flex-direction:column;gap:12px}
 
-/* Cabecera: que esta pasando con el filamento, en una linea. */
-.fil-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.fil-badge{
-  display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:99px;
-  font-size:10px;font-weight:650;letter-spacing:.05em;text-transform:uppercase;flex:none;
-  background:rgba(0,212,146,.12);color:var(--accent);border:1px solid rgba(0,212,146,.28);
-  transition:background .35s,color .35s,border-color .35s;
-}
-.fil-badge.is-idle{background:var(--surface-2);color:var(--dim);border-color:var(--line)}
-.fil-badge.is-changing{background:rgba(245,165,36,.12);color:var(--warn);
-  border-color:rgba(245,165,36,.3)}
-.fil-badge.is-none{background:rgba(255,92,92,.1);color:var(--err);
-  border-color:rgba(255,92,92,.26)}
-.fil-badge i{width:6px;height:6px;border-radius:50%;background:currentColor;font-style:normal;
-  flex:none}
-.fil.is-feeding .fil-badge i,.fil.is-changing .fil-badge i{animation:blink 1.4s ease-in-out infinite}
-.fil-note{flex:1;min-width:0;font-size:12.5px;color:var(--faint);text-align:right;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-
 /* Rejilla de bandejas: refleja el AMS tal cual, dos por fila. */
 .fil-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;flex:1;align-content:center}
 .fil-cell{
@@ -537,6 +558,8 @@ img{max-width:100%}
   margin:0 0 11px;font-weight:650;
 }
 .section p.note{font-size:12px;color:var(--faint);margin:9px 0 0;line-height:1.5}
+/* Solo el diagnostico de push va en varias lineas propias. */
+#push-note{white-space:pre-line}
 
 .opt{display:flex;align-items:center;gap:12px;padding:9px 0}
 .opt+.opt{border-top:1px solid var(--line)}
@@ -559,6 +582,20 @@ img{max-width:100%}
 .sw[aria-checked="true"]{background:rgba(0,212,146,.28);border-color:rgba(0,212,146,.5)}
 .sw[aria-checked="true"]::after{transform:translateX(19px);background:var(--accent)}
 .sw[disabled]{opacity:.4;cursor:not-allowed}
+
+/* Pasos de la guia de instalacion */
+.steps{margin:0;padding:0;list-style:none;counter-reset:paso}
+.steps+.steps{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+.steps li{font-size:13px;color:var(--dim);padding:5px 0 5px 26px;position:relative;line-height:1.45}
+.steps li b{color:var(--text);font-weight:600}
+.steps li:not(:first-child)::before{
+  counter-increment:paso;content:counter(paso);
+  position:absolute;left:0;top:5px;width:18px;height:18px;border-radius:50%;
+  display:grid;place-items:center;font-size:10px;font-weight:700;
+  background:rgba(0,212,146,.14);color:var(--accent);border:1px solid rgba(0,212,146,.3);
+}
+.steps li:first-child{padding-left:0;font-size:11px;text-transform:uppercase;
+  letter-spacing:.06em;color:var(--faint);margin-bottom:2px}
 
 .btn-row{display:flex;gap:9px;flex-wrap:wrap}
 .btn{
@@ -613,6 +650,9 @@ img{max-width:100%}
 /* Una circunferencia entera por ciclo: el patron encaja consigo mismo y no
    hay salto al reiniciar la animacion. */
 @keyframes orbit{to{stroke-dashoffset:-263.89}}
+@keyframes splash-in{from{opacity:0;transform:scale(.82)}to{opacity:1;transform:none}}
+@keyframes splash-pulse{0%,100%{opacity:.5;transform:scale(.95)}50%{opacity:1;transform:scale(1.06)}}
+@keyframes splash-fill{from{width:0}to{width:100%}}
 @keyframes holo-scan{
   0%{transform:translateY(0);opacity:0}
   12%,88%{opacity:1}
@@ -665,6 +705,22 @@ img{max-width:100%}
     <stop offset="100%" stop-color="#7ef0ff" stop-opacity="0"/>
   </linearGradient>
 </defs></svg>
+
+<!-- ======================= Pantalla de carga ============================== -->
+<div id="splash" class="splash">
+  <div class="splash-holo">
+    <svg class="holo" viewBox="0 0 100 100" aria-hidden="true">
+      <g class="solid">
+        <g id="splash-edges"></g>
+        <g id="splash-verts"></g>
+      </g>
+      <rect class="scan" x="9" y="-14" width="82" height="14" fill="url(#g-scan)"/>
+    </svg>
+  </div>
+  <div class="splash-name">Bambu Lab</div>
+  <div class="splash-sub">Estado de impresión</div>
+  <div class="splash-bar"><i></i></div>
+</div>
 
 <!-- ======================= Puerta: contrasena ============================= -->
 <div id="gate" class="gate hidden">
@@ -808,7 +864,7 @@ img{max-width:100%}
                   <g id="holo-edges"></g>
                   <g id="holo-verts"></g>
                 </g>
-                <rect class="scan" x="0" y="-14" width="100" height="14" fill="url(#g-scan)"/>
+                <rect class="scan" x="9" y="-14" width="82" height="14" fill="url(#g-scan)"/>
               </svg>
             </div>
             <div class="job-meta">
@@ -825,12 +881,6 @@ img{max-width:100%}
       <section class="card">
         <h2>Filamento <span class="tag" id="fil-tag"></span></h2>
         <div class="fil" id="fil">
-          <div class="fil-head">
-            <span class="fil-badge is-idle" id="fil-badge">
-              <i></i><span id="fil-badge-text">sin datos</span>
-            </span>
-            <span class="fil-note" id="fil-note">esperando a la impresora</span>
-          </div>
           <div class="fil-grid" id="fil-grid"></div>
         </div>
       </section>
@@ -866,6 +916,57 @@ img{max-width:100%}
   <span class="meta">
     <span id="meta-fw"></span><span id="meta-wifi"></span><span id="meta-updated"></span>
   </span>
+</div>
+
+<!-- ======================= Bienvenida / instalacion ======================= -->
+<div id="onboard" class="modal hidden">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h2>Sácale partido</h2>
+      <button class="close" id="onboard-close" aria-label="Cerrar">
+        <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <div class="section" id="onboard-install">
+      <h3>1 · Instala la app</h3>
+      <p class="note" style="margin:0 0 12px">
+        Instalada se abre a pantalla completa, con su icono, y es la única forma de recibir
+        avisos en iPhone.
+      </p>
+      <ol class="steps" id="steps-android">
+        <li><b>Android · Chrome</b></li>
+        <li>Abre el menú <b>⋮</b> arriba a la derecha.</li>
+        <li>Toca <b>Instalar aplicación</b> o <b>Añadir a pantalla de inicio</b>.</li>
+        <li>Confirma. El icono aparecerá con tus apps.</li>
+      </ol>
+      <ol class="steps" id="steps-ios">
+        <li><b>iPhone / iPad · Safari</b></li>
+        <li>Toca <b>Compartir</b> (el cuadrado con la flecha hacia arriba).</li>
+        <li>Baja y elige <b>Añadir a pantalla de inicio</b>.</li>
+        <li>Toca <b>Añadir</b>. Ábrela desde ese icono, no desde Safari.</li>
+      </ol>
+      <div class="btn-row" style="margin-top:12px">
+        <button class="btn" id="onboard-install-btn" hidden>Instalar ahora</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>2 · Permite los avisos</h3>
+      <p class="note" style="margin:0 0 12px">
+        Para que te avise cuando la impresión se enfríe y cuando ya puedas retirarla, aunque
+        tengas la app cerrada.
+      </p>
+      <div class="btn-row">
+        <button class="btn" id="onboard-notify">Activar avisos</button>
+      </div>
+      <p class="note" id="onboard-notify-note"></p>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn" id="onboard-dismiss">No volver a mostrar</button>
+    </div>
+  </div>
 </div>
 
 <!-- ======================= Panel de administracion ======================== -->
@@ -904,23 +1005,8 @@ img{max-width:100%}
                   aria-label="Enviar notificaciones"></button>
         </div>
 
-        <div class="opt sub">
-          <div class="txt">
-            <b>La impresión se está enfriando</b>
-            <small>Al terminar, cuando arranca el periodo de enfriamiento.</small>
-          </div>
-          <button class="sw" id="sw-cooling" role="switch" aria-checked="false"
-                  aria-label="Aviso de enfriamiento"></button>
-        </div>
-
-        <div class="opt sub">
-          <div class="txt">
-            <b>La impresión puede retirarse</b>
-            <small>Cuando la cama ya se ha enfriado y la pieza se puede sacar.</small>
-          </div>
-          <button class="sw" id="sw-ready" role="switch" aria-checked="false"
-                  aria-label="Aviso de retirada"></button>
-        </div>
+        <!-- Un interruptor por tipo de aviso; se generan desde el servidor. -->
+        <div id="trigger-list"></div>
 
         <p class="note" id="push-note"></p>
         <div class="btn-row" style="margin-top:11px">
@@ -971,6 +1057,16 @@ const SHOW_COVER = false;
 const CAN_NOTIFY = typeof Notification !== 'undefined';
 const CAN_PUSH = 'serviceWorker' in navigator && 'PushManager' in window;
 
+const IS_IOS = /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+  // iPadOS se hace pasar por Mac; el multitactil lo delata.
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const IS_ANDROID = /android/i.test(navigator.userAgent);
+/** true cuando corre como app instalada, no como pestana del navegador. */
+const IS_STANDALONE =
+  matchMedia('(display-mode: standalone)').matches ||
+  matchMedia('(display-mode: fullscreen)').matches ||
+  navigator.standalone === true;
+
 let camTimer = null;
 let lastCameraAt = null;
 let gotFirstState = false;
@@ -979,6 +1075,7 @@ let lastState = null;      // ultimo estado normalizado
 let lastCycle = null;      // fase del ciclo (impresion / enfriamiento / retirada)
 let pushConfig = { supported: false, publicKey: null, devices: 0 };
 let settings = null;
+let triggerCatalog = [];   // tipos de aviso que ofrece el servidor
 let swReg = null;
 
 let wsOpen = false;
@@ -1358,9 +1455,15 @@ function renderFilament(s) {
 
   fil.classList.toggle('is-feeding', feeding);
   fil.classList.toggle('is-changing', changing);
-  $('fil-tag').textContent = loaded.length
-    ? `${loaded.length} bobina${loaded.length > 1 ? 's' : ''}`
-    : '';
+  // El cambio de filamento se cuenta en la esquina del panel; el resto del
+  // tiempo basta con cuantas bobinas hay. Sin cartel: lo que esta en uso ya se
+  // ve porque su casilla es la unica resaltada, y si no hay ninguna en uso no
+  // se resalta nada.
+  $('fil-tag').textContent = changing
+    ? 'cambiando filamento'
+    : loaded.length
+      ? `${loaded.length} bobina${loaded.length > 1 ? 's' : ''}`
+      : 'sin bobinas';
 
   // La firma deja fuera lo que cambia solo (cual esta en uso): asi la rejilla
   // se rehace al insertar o sacar una bobina, y nada mas.
@@ -1375,29 +1478,6 @@ function renderFilament(s) {
     cell.el.classList.toggle('active', Boolean(item?.active));
   }
 
-  // --- Cabecera ---
-  let tone = 'is-idle';
-  let badgeText = 'ninguno en uso';
-  let note = loaded.length ? 'ninguna bobina seleccionada' : '';
-
-  if (changing) {
-    tone = 'is-changing';
-    badgeText = 'cambiando filamento';
-    note = 'la impresora está moviendo el filamento';
-  } else if (active) {
-    // Sin "· imprimiendo": el estado de la impresion ya se cuenta en su panel.
-    tone = feeding ? '' : 'is-idle';
-    badgeText = feeding ? 'en uso' : 'cargado';
-    note = `${active.label} · ${active.loc}`;
-  } else if (!loaded.length) {
-    tone = 'is-none';
-    badgeText = 'sin filamento';
-    note = 'inserta una bobina para imprimir';
-  }
-
-  $('fil-badge').className = 'fil-badge' + (tone ? ' ' + tone : '');
-  $('fil-badge-text').textContent = badgeText;
-  $('fil-note').textContent = note;
 }
 
 // ===========================================================================
@@ -1442,35 +1522,35 @@ const HOLO = (() => {
 })();
 
 const NS = 'http://www.w3.org/2000/svg';
-let holoEdgeEls = [];
-let holoVertEls = [];
-let holoRaf = 0;
 
-function buildHolo() {
-  const eg = $('holo-edges');
-  const vg = $('holo-verts');
-  if (!eg || holoEdgeEls.length) return;
+/** Crea las lineas y los puntos de una instancia del holograma. */
+function makeHolo(edgesId, vertsId, { thickness = 1 } = {}) {
+  const eg = $(edgesId);
+  const vg = $(vertsId);
+  if (!eg || !vg) return null;
 
-  holoEdgeEls = HOLO.edges.map(() => {
+  const edges = HOLO.edges.map(() => {
     const l = document.createElementNS(NS, 'line');
     l.setAttribute('class', 'edge');
     eg.appendChild(l);
     return l;
   });
-  holoVertEls = HOLO.verts.map(() => {
+  const verts = HOLO.verts.map(() => {
     const c = document.createElementNS(NS, 'circle');
     c.setAttribute('class', 'vtx');
     vg.appendChild(c);
     return c;
   });
+  return { edges, verts, thickness };
 }
 
 /** Un fotograma: rota, proyecta y reparte opacidad segun profundidad. */
-function drawHolo(t) {
+function drawHolo(holo, t) {
+  if (!holo) return;
   const R = 33;
   const D = 3.4; // distancia de camara; da algo de perspectiva sin deformar
 
-  const ay = t * 0.00062;                        // giro constante
+  const ay = t * 0.00062;                         // giro constante
   const ax = 0.38 + Math.sin(t * 0.00029) * 0.16; // cabeceo lento
   const cy = Math.cos(ay), sy = Math.sin(ay);
   const cx = Math.cos(ax), sx = Math.sin(ax);
@@ -1484,43 +1564,73 @@ function drawHolo(t) {
     return { x: 50 + X * R * k, y: 50 + Y * R * k, z: Z };
   });
 
-  for (let i = 0; i < holoEdgeEls.length; i++) {
+  for (let i = 0; i < holo.edges.length; i++) {
     const [a, b] = HOLO.edges[i];
-    const el = holoEdgeEls[i];
+    const el = holo.edges[i];
     el.setAttribute('x1', p[a].x.toFixed(1));
     el.setAttribute('y1', p[a].y.toFixed(1));
     el.setAttribute('x2', p[b].x.toFixed(1));
     el.setAttribute('y2', p[b].y.toFixed(1));
-    const depth = (p[a].z + p[b].z) / 2;          // -1 detras, +1 delante
-    const f = (depth + 1) / 2;
+    const f = ((p[a].z + p[b].z) / 2 + 1) / 2;    // 0 detras, 1 delante
     el.setAttribute('opacity', (0.13 + f * 0.87).toFixed(2));
-    el.setAttribute('stroke-width', (0.7 + f * 0.9).toFixed(2));
+    el.setAttribute('stroke-width', ((0.7 + f * 0.9) * holo.thickness).toFixed(2));
   }
 
-  for (let i = 0; i < holoVertEls.length; i++) {
-    const el = holoVertEls[i];
+  for (let i = 0; i < holo.verts.length; i++) {
+    const el = holo.verts[i];
     const f = (p[i].z + 1) / 2;
     el.setAttribute('cx', p[i].x.toFixed(1));
     el.setAttribute('cy', p[i].y.toFixed(1));
-    el.setAttribute('r', (0.9 + f * 1.3).toFixed(2));
+    el.setAttribute('r', ((0.9 + f * 1.3) * holo.thickness).toFixed(2));
     el.setAttribute('opacity', (0.2 + f * 0.8).toFixed(2));
   }
 }
 
+let coverHolo = null;
+let holoRaf = 0;
+
+// ---------------------------------------------------------------------------
+// Pantalla de carga
+//
+// Dura 1,5 s fijos. Mientras tanto la sesion y el WebSocket ya se estan
+// resolviendo por detras, asi que no retrasa nada: al desvanecerse el
+// dashboard suele estar ya con datos.
+// ---------------------------------------------------------------------------
+
+const SPLASH_MS = 1500;
+
+function runSplash() {
+  const el = $('splash');
+  const holo = makeHolo('splash-edges', 'splash-verts', { thickness: 1.15 });
+  drawHolo(holo, 0);
+
+  let raf = 0;
+  if (!REDUCED) {
+    const loop = (now) => { drawHolo(holo, now * 1.9); raf = requestAnimationFrame(loop); };
+    raf = requestAnimationFrame(loop);
+  }
+
+  setTimeout(() => {
+    el.classList.add('done');
+    // Se quita del arbol al acabar el fundido: deja de animar y de robar
+    // eventos, y libera el bucle del holograma.
+    setTimeout(() => { cancelAnimationFrame(raf); el.remove(); }, 500);
+  }, SPLASH_MS);
+}
+
 function startHolo() {
-  buildHolo();
+  if (!coverHolo) coverHolo = makeHolo('holo-edges', 'holo-verts');
   // Una pose ya dibujada antes de arrancar el bucle: si no, el primer pintado
   // muestra el marco vacio hasta que llega el primer fotograma.
-  drawHolo(2400);
-  if (REDUCED) return;                       // pose fija, sin movimiento
-  if (holoRaf) return;
+  drawHolo(coverHolo, 2400);
+  if (REDUCED || holoRaf) return;              // pose fija, sin movimiento
   const loop = (now) => {
     holoRaf = requestAnimationFrame(loop);
     // Nada que dibujar si hay portada de verdad o la pestana esta oculta:
     // es decoracion, no tiene por que gastar bateria de fondo.
     if (document.visibilityState !== 'visible') return;
     if ($('cover-ph').classList.contains('hidden')) return;
-    drawHolo(now);
+    drawHolo(coverHolo, now);
   };
   holoRaf = requestAnimationFrame(loop);
 }
@@ -1587,6 +1697,9 @@ function start() {
   registerServiceWorker();
 
   if (!CAN_NOTIFY) $('btn-notify').classList.add('hidden');
+
+  // Despues de la pantalla de carga, para no solapar dos cosas encima.
+  setTimeout(maybeShowOnboarding, SPLASH_MS + 600);
 }
 
 function connectWs() {
@@ -1612,10 +1725,9 @@ function connectWs() {
       handleLoginPending(payload.loginPending);
       syncNotifyButton();
       paintSync();
-      // La clave VAPID llega con el snapshot, normalmente despues de que el
-      // Service Worker ya se haya registrado: es aqui donde se puede renovar
-      // la suscripcion de un dispositivo que ya tenia permiso concedido.
-      if (CAN_NOTIFY && Notification.permission === 'granted') subscribePush();
+      // La clave VAPID llega con el snapshot: buen momento para asegurar la
+      // suscripcion de un dispositivo que ya tenia el permiso concedido.
+      if (CAN_NOTIFY && Notification.permission === 'granted') ensurePush();
     }
     else if (type === 'state') { lastDataAt = Date.now(); renderState(payload); paintSync(); }
     else if (type === 'status') renderStatus(payload);
@@ -1863,7 +1975,7 @@ async function registerServiceWorker() {
     await navigator.serviceWorker.ready;
     // Si el permiso ya estaba dado, la suscripcion se renueva en silencio:
     // el endpoint del push service caduca y hay que reenviarlo al servidor.
-    if (CAN_NOTIFY && Notification.permission === 'granted') await subscribePush();
+    await ensurePush();
     syncNotifyButton();
   } catch (err) {
     console.warn('[sw] no se pudo registrar:', err.message);
@@ -1877,23 +1989,95 @@ function urlB64ToUint8(base64) {
   return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
 }
 
-async function subscribePush() {
-  if (!CAN_PUSH || !swReg || !pushConfig.supported || !pushConfig.publicKey) return false;
+/** Ultimo motivo por el que no se pudo suscribir, para poder contarlo. */
+let pushState = { ok: false, reason: 'init', detail: 'Sin comprobar todavía' };
+
+/**
+ * Deja este dispositivo suscrito a Web Push, o explica por que no puede.
+ *
+ * Antes esto eran dos caminos sueltos (uno al registrar el Service Worker y
+ * otro al llegar el snapshot) y cada uno se rendia en silencio si el otro no
+ * habia terminado: una carrera que dejaba el movil sin suscribir sin que nada
+ * lo indicase. Ahora la funcion espera ella misma lo que le falta y es
+ * idempotente, asi que se puede llamar tantas veces como haga falta.
+ *
+ * @param {object} [opts]
+ * @param {boolean} [opts.interactive] pedir el permiso si aun no se ha dado
+ */
+async function ensurePush({ interactive = false } = {}) {
+  const fail = (reason, detail) => {
+    pushState = { ok: false, reason, detail };
+    return pushState;
+  };
+
+  if (!CAN_NOTIFY || !CAN_PUSH) {
+    return fail(
+      'unsupported',
+      location.protocol === 'https:'
+        ? 'Este navegador no admite notificaciones push.'
+        : 'Las notificaciones necesitan HTTPS. Entra por el dominio, no por la IP.',
+    );
+  }
+
+  if (Notification.permission === 'denied') {
+    return fail('denied', 'Los avisos están bloqueados en los ajustes del navegador.');
+  }
+  if (Notification.permission !== 'granted') {
+    if (!interactive) return fail('permission', 'Falta conceder el permiso en este dispositivo.');
+    if ((await Notification.requestPermission()) !== 'granted') {
+      return fail('denied', 'No se concedió el permiso.');
+    }
+  }
+
+  // Esperar aqui al Service Worker es lo que rompe la carrera.
+  if (!swReg) {
+    try {
+      swReg = await navigator.serviceWorker.ready;
+    } catch {
+      return fail('sw', 'El Service Worker no está activo.');
+    }
+  }
+
+  // La clave publica llega con el snapshot del WebSocket; si aun no ha
+  // llegado, se pide directamente en vez de abandonar.
+  if (!pushConfig.publicKey) {
+    try {
+      pushConfig = await fetch('/api/push/key').then((r) => r.json());
+    } catch { /* se reintentara en el siguiente snapshot */ }
+  }
+  if (!pushConfig.supported || !pushConfig.publicKey) {
+    return fail(
+      'server',
+      'El servidor no tiene claves VAPID configuradas (VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY).',
+    );
+  }
+
   try {
     const existing = await swReg.pushManager.getSubscription();
-    const sub = existing || (await swReg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlB64ToUint8(pushConfig.publicKey),
-    }));
-    await fetch('/api/push/subscribe', {
+    const sub =
+      existing ||
+      (await swReg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlB64ToUint8(pushConfig.publicKey),
+      }));
+    const res = await fetch('/api/push/subscribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ subscription: sub.toJSON() }),
     });
-    return true;
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      return fail('server', j.error || 'El servidor rechazó la suscripción.');
+    }
+    const j = await res.json().catch(() => ({}));
+    if (j.count != null) pushConfig.devices = j.count;
+    pushState = { ok: true, reason: 'ok', detail: 'Este dispositivo está suscrito.' };
+    return pushState;
   } catch (err) {
-    console.warn('[push]', err.message);
-    return false;
+    // En iOS esto falla si la web no se ha anadido a la pantalla de inicio.
+    return fail('subscribe', IS_IOS && !IS_STANDALONE
+      ? 'En iPhone hay que añadir la app a la pantalla de inicio antes de activar los avisos.'
+      : `No se pudo suscribir: ${err.message}`);
   }
 }
 
@@ -1911,18 +2095,9 @@ function syncNotifyButton() {
 
 $('btn-notify').onclick = async () => {
   if (!CAN_NOTIFY) return;
-  const perm = await Notification.requestPermission();
+  const r = await ensurePush({ interactive: true });
   syncNotifyButton();
-  if (perm !== 'granted') {
-    toast('Los avisos están bloqueados en los ajustes del navegador', 'err');
-    return;
-  }
-  const ok = await subscribePush();
-  toast(
-    ok ? 'Avisos activados en este dispositivo'
-       : 'Avisos activos solo con la web abierta',
-    ok ? 'ok' : 'err',
-  );
+  toast(r.ok ? 'Avisos activados en este dispositivo' : r.detail, r.ok ? 'ok' : 'err');
 };
 
 /** Aviso en pantalla cuando la pestana esta abierta. */
@@ -1937,6 +2112,106 @@ function notifyBrowser(e) {
     new Notification('Bambu Lab', { body: e.text, tag: e.type });
   }
 }
+
+// ===========================================================================
+// Bienvenida: como instalar la app y como permitir los avisos
+//
+// Se muestra como mucho 3 veces, y nunca dos veces el mismo dia. Una vez la
+// app esta instalada deja de aparecer para siempre: ahi ya no tiene nada que
+// contar. El recuento vive en localStorage, que es por dispositivo — que es
+// justo lo que interesa, porque instalar y dar permisos tambien lo es.
+// ===========================================================================
+
+const ONBOARD_KEY = 'bambu.onboard';
+const ONBOARD_MAX = 3;
+const ONBOARD_GAP_MS = 24 * 60 * 60 * 1000;
+
+function onboardState() {
+  try {
+    return { count: 0, last: 0, done: false, ...JSON.parse(localStorage.getItem(ONBOARD_KEY) || '{}') };
+  } catch {
+    return { count: 0, last: 0, done: false };
+  }
+}
+
+function saveOnboard(patch) {
+  try {
+    localStorage.setItem(ONBOARD_KEY, JSON.stringify({ ...onboardState(), ...patch }));
+  } catch { /* modo privado: se mostrara alguna vez de mas, sin mas consecuencia */ }
+}
+
+/** Evento que Chrome dispara cuando la PWA se puede instalar de verdad. */
+let installPrompt = null;
+addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  installPrompt = e;
+  const btn = $('onboard-install-btn');
+  if (btn) btn.hidden = false;
+});
+addEventListener('appinstalled', () => {
+  saveOnboard({ done: true });
+  $('onboard').classList.add('hidden');
+});
+
+function maybeShowOnboarding() {
+  if (IS_STANDALONE) { saveOnboard({ done: true }); return; }  // ya instalada
+  const st = onboardState();
+  if (st.done || st.count >= ONBOARD_MAX) return;
+  if (Date.now() - st.last < ONBOARD_GAP_MS) return;
+
+  // Cada plataforma ve primero sus pasos; los de la otra se ocultan para no
+  // convertir la ayuda en un muro de texto.
+  if (IS_IOS) $('steps-android').classList.add('hidden');
+  else if (IS_ANDROID) $('steps-ios').classList.add('hidden');
+
+  paintOnboardNotify();
+  $('onboard').classList.remove('hidden');
+  saveOnboard({ count: st.count + 1, last: Date.now() });
+}
+
+function paintOnboardNotify() {
+  const note = $('onboard-notify-note');
+  const btn = $('onboard-notify');
+  if (!CAN_NOTIFY) {
+    note.textContent = 'Este navegador no admite avisos.';
+    btn.disabled = true;
+    return;
+  }
+  if (Notification.permission === 'granted') {
+    note.textContent = 'Avisos ya concedidos en este dispositivo ✓';
+    btn.disabled = true;
+  } else if (Notification.permission === 'denied') {
+    note.textContent =
+      'Están bloqueados. Actívalos en los ajustes del navegador para este sitio.';
+    btn.disabled = true;
+  } else {
+    note.textContent = IS_IOS && !IS_STANDALONE
+      ? 'En iPhone hay que instalar la app antes de poder activarlos.'
+      : '';
+    btn.disabled = false;
+  }
+}
+
+$('onboard-close').onclick = () => $('onboard').classList.add('hidden');
+$('onboard').onclick = (e) => { if (e.target === $('onboard')) $('onboard').classList.add('hidden'); };
+$('onboard-dismiss').onclick = () => {
+  saveOnboard({ done: true });
+  $('onboard').classList.add('hidden');
+};
+$('onboard-install-btn').onclick = async () => {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  const { outcome } = await installPrompt.userChoice;
+  installPrompt = null;
+  if (outcome === 'accepted') saveOnboard({ done: true });
+  $('onboard-install-btn').hidden = true;
+};
+$('onboard-notify').onclick = async () => {
+  const r = await ensurePush({ interactive: true });
+  syncNotifyButton();
+  paintOnboardNotify();
+  if (!r.ok) $('onboard-notify-note').textContent = r.detail;
+};
 
 // ===========================================================================
 // Panel de administracion
@@ -1964,27 +2239,62 @@ async function showAdminPanel() {
   try {
     const r = await fetch('/api/settings').then((x) => x.json());
     settings = r.settings;
+    triggerCatalog = r.triggers || triggerCatalog;
     pushConfig = r.push || pushConfig;
     const channels = Object.entries(r.channels || {}).filter(([, v]) => v).map(([k]) => k);
     $('account-note').textContent = r.account
       ? `Sesión iniciada como ${r.account}.`
       : 'No hay ninguna cuenta configurada.';
-    $('push-note').textContent = pushConfig.supported
-      ? `Notificaciones push activas · ${pushConfig.devices} dispositivo(s) suscrito(s)` +
-        (channels.length ? ` · también por ${channels.join(', ')}` : '')
-      : 'Web Push no está configurado en el servidor (faltan las claves VAPID). ' +
-        'Los avisos solo llegarán con la web abierta.';
+    // Diagnostico en tres partes: servidor, este dispositivo, otros canales.
+    const lines = [];
+    lines.push(
+      pushConfig.supported
+        ? `Servidor: push activo · ${pushConfig.devices} dispositivo(s) suscrito(s)`
+        : 'Servidor: sin claves VAPID (VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY). ' +
+          'Los avisos solo llegarán con la web abierta.',
+    );
+    const mine = await ensurePush();
+    lines.push(`Este dispositivo: ${mine.ok ? 'suscrito ✓' : mine.detail}`);
+    if (channels.length) lines.push(`También por ${channels.join(', ')}.`);
+    $('push-note').textContent = lines.join('\n');
   } catch { /* el panel sigue siendo usable con los ajustes que ya tengamos */ }
   paintSettings();
 }
 
+/** Construye un interruptor por tipo de aviso. Solo la primera vez. */
+function buildTriggerList() {
+  const box = $('trigger-list');
+  if (!box || box.childElementCount || !triggerCatalog.length) return;
+  box.innerHTML = triggerCatalog
+    .map(
+      (t) => `<div class="opt sub">
+        <div class="txt">
+          <b>${escapeHtml(t.label)}</b>
+          <small>${escapeHtml(t.desc || '')}</small>
+        </div>
+        <button class="sw" data-trigger="${escapeAttr(t.key)}" role="switch"
+                aria-checked="false" aria-label="${escapeAttr(t.label)}"></button>
+      </div>`,
+    )
+    .join('');
+  box.querySelectorAll('[data-trigger]').forEach((el) => {
+    el.onclick = () => {
+      if (!settings?.enabled) return;
+      const key = el.dataset.trigger;
+      saveSettings({ triggers: { [key]: settings.triggers?.[key] === false } });
+    };
+  });
+}
+
 function paintSettings() {
   if (!settings) return;
+  buildTriggerList();
   setSwitch($('sw-enabled'), settings.enabled);
-  setSwitch($('sw-cooling'), settings.triggers?.cooling !== false);
-  setSwitch($('sw-ready'), settings.triggers?.ready !== false);
-  // Los disparadores individuales no pintan nada si el maestro esta apagado.
-  for (const id of ['sw-cooling', 'sw-ready']) $(id).disabled = !settings.enabled;
+  for (const el of $('trigger-list').querySelectorAll('[data-trigger]')) {
+    setSwitch(el, settings.triggers?.[el.dataset.trigger] !== false);
+    // Los disparadores individuales no pintan nada si el maestro esta apagado.
+    el.disabled = !settings.enabled;
+  }
 }
 
 function setSwitch(el, on) {
@@ -2019,25 +2329,22 @@ $('admin-unlock').onclick = async () => {
 $('admin-code').onkeydown = (e) => { if (e.key === 'Enter') $('admin-unlock').click(); };
 
 $('sw-enabled').onclick = () => saveSettings({ enabled: !settings?.enabled });
-$('sw-cooling').onclick = () => {
-  if (!settings?.enabled) return;
-  saveSettings({ triggers: { cooling: settings.triggers?.cooling === false } });
-};
-$('sw-ready').onclick = () => {
-  if (!settings?.enabled) return;
-  saveSettings({ triggers: { ready: settings.triggers?.ready === false } });
-};
 
 $('btn-push-test').onclick = async () => {
-  if (CAN_NOTIFY && Notification.permission !== 'granted') {
-    toast('Activa primero los avisos con la campana', 'err');
-    return;
-  }
+  // Asegurar la suscripcion antes de probar: si este dispositivo no estaba
+  // dado de alta, el "no hay dispositivos suscritos" no decia por que.
+  const r = await ensurePush({ interactive: true });
+  syncNotifyButton();
+  if (!r.ok) { toast(r.detail, 'err'); return; }
+
   const res = await fetch('/api/push/test', { method: 'POST' });
   const j = await res.json().catch(() => ({}));
   if (!res.ok) { toast(j.error || 'No se pudo enviar', 'err'); return; }
-  toast(j.sent ? `Aviso enviado a ${j.sent} dispositivo(s)` : 'No hay dispositivos suscritos',
-        j.sent ? 'ok' : 'err');
+  toast(
+    j.sent ? `Aviso enviado a ${j.sent} dispositivo(s)` : 'No hay dispositivos suscritos',
+    j.sent ? 'ok' : 'err',
+  );
+  showAdminPanel();   // refresca el recuento de dispositivos
 };
 
 $('btn-bambu-logout').onclick = async () => {
@@ -2094,6 +2401,7 @@ function countdown(ms) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+runSplash();
 checkSession();
 </script>
 </body>

@@ -19,9 +19,45 @@ const HISTORY_MS = HISTORY_DAYS * 24 * 60 * 60 * 1000;
 // miles de entradas en un solo dia y reventar el fichero de estado.
 const HISTORY_MAX = 600;
 
+/**
+ * Catalogo de avisos que la app puede emitir.
+ *
+ * Es la unica fuente de verdad: el panel de administracion dibuja un
+ * interruptor por entrada, asi que anadir un tipo aqui basta para que aparezca
+ * en la interfaz. `key` coincide con el `type` que se pasa a fire().
+ */
+export const TRIGGERS = [
+  { key: 'started', label: 'Impresión iniciada', desc: 'Al empezar un trabajo nuevo.' },
+  { key: 'finished', label: 'Impresión terminada', desc: 'Cuando la impresora acaba el trabajo.' },
+  {
+    key: 'cooling',
+    label: 'La impresión se está enfriando',
+    desc: 'Al terminar, cuando arranca el periodo de enfriamiento.',
+  },
+  {
+    key: 'ready',
+    label: 'La impresión puede retirarse',
+    desc: 'Cuando la cama ya se ha enfriado y la pieza se puede sacar.',
+  },
+  { key: 'paused', label: 'Impresión en pausa', desc: 'Pausa manual, por AMS o por el usuario.' },
+  { key: 'resumed', label: 'Impresión reanudada', desc: 'Al continuar tras una pausa.' },
+  { key: 'failed', label: 'Impresión fallida', desc: 'Cuando el trabajo termina en error.' },
+  {
+    key: 'attention',
+    label: 'La impresora necesita atención',
+    desc: 'Cambio de filamento, atasco, filamento agotado…',
+  },
+  { key: 'hms', label: 'Errores HMS', desc: 'Códigos de diagnóstico que reporta la máquina.' },
+  {
+    key: 'progress',
+    label: 'Hitos de progreso',
+    desc: 'Avisos cada N % (solo si NOTIFY_PROGRESS_STEP no es 0).',
+  },
+];
+
 export const DEFAULT_SETTINGS = {
   enabled: true,
-  triggers: { cooling: true, ready: true },
+  triggers: Object.fromEntries(TRIGGERS.map((t) => [t.key, true])),
 };
 
 export class Notifier extends EventEmitter {
