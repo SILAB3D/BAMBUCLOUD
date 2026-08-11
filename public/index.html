@@ -210,7 +210,6 @@ img{max-width:100%}
   font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;
   color:var(--dim);background:var(--surface-2);border:1px solid var(--line);
 }
-.basic-state{display:block;font-size:12px;color:var(--faint);margin-top:4px}
 
 /* Circulo de estado de impresion.
    El patron de guiones suma justo la circunferencia (65.97 + 197.92 = 263.89):
@@ -309,8 +308,25 @@ img{max-width:100%}
   width:clamp(44px,7vw,54px);aspect-ratio:1;flex:none;border-radius:var(--r-sm);object-fit:cover;
   background:var(--surface-2);border:1px solid var(--line);animation:fade-in .5s var(--ease) both;
 }
-.cover-ph{display:grid;place-items:center}
-.cover-ph svg{width:42%;height:42%;stroke:var(--faint);fill:none;stroke-width:1.6}
+/* Marcador cuando el trabajo no trae portada: un icosaedro en holograma.
+   La geometria se calcula en JS (ver drawHolo); aqui solo va el ambiente. */
+.cover-ph{
+  display:grid;place-items:center;position:relative;overflow:hidden;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(62,201,255,.20), transparent 68%),
+    var(--surface-2);
+}
+.cover-ph::after{
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(rgba(126,240,255,.07) 0 1px, transparent 1px 3px);
+  mix-blend-mode:screen;
+}
+.holo{width:100%;height:100%;display:block}
+.holo .edge{stroke:url(#g-holo);fill:none;stroke-linecap:round}
+.holo .vtx{fill:#a8f6ff}
+.holo .solid{filter:drop-shadow(0 0 3px rgba(62,201,255,.75))}
+/* Barrido de escaneo: recorre la figura de arriba abajo. */
+.holo .scan{animation:holo-scan 3.2s cubic-bezier(.4,0,.6,1) infinite}
 .job-meta{min-width:0}
 .job-meta .k{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint)}
 .job{
@@ -597,6 +613,11 @@ img{max-width:100%}
 /* Una circunferencia entera por ciclo: el patron encaja consigo mismo y no
    hay salto al reiniciar la animacion. */
 @keyframes orbit{to{stroke-dashoffset:-263.89}}
+@keyframes holo-scan{
+  0%{transform:translateY(0);opacity:0}
+  12%,88%{opacity:1}
+  100%{transform:translateY(114px);opacity:0}
+}
 @keyframes full-ring{
   0%{transform:scale(1);opacity:.55}
   70%,100%{transform:scale(1.22);opacity:0}
@@ -633,6 +654,15 @@ img{max-width:100%}
        impresion, para que las dos fases no se confundan de un vistazo. -->
   <linearGradient id="g-chill" x1="0" y1="0" x2="1" y2="1">
     <stop offset="0%" stop-color="#3ec9ff"/><stop offset="100%" stop-color="#7f8cff"/>
+  </linearGradient>
+  <!-- Holograma del proyecto -->
+  <linearGradient id="g-holo" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#7ef0ff"/><stop offset="100%" stop-color="#00d492"/>
+  </linearGradient>
+  <linearGradient id="g-scan" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#7ef0ff" stop-opacity="0"/>
+    <stop offset="50%" stop-color="#7ef0ff" stop-opacity=".55"/>
+    <stop offset="100%" stop-color="#7ef0ff" stop-opacity="0"/>
   </linearGradient>
 </defs></svg>
 
@@ -689,10 +719,11 @@ img{max-width:100%}
         <div class="oicon" id="orb-icon"></div>
       </div>
 
+      <!-- Sin texto de estado: lo dice el circulo de la izquierda, y repetirlo
+           aqui solo ocupaba sitio. Queda en su `title` por accesibilidad. -->
       <div class="basic-id">
         <h1 id="printer-name">Bambu Lab</h1>
         <span id="printer-model" class="model hidden"></span>
-        <span id="printer-state" class="basic-state">Conectando…</span>
       </div>
 
       <div class="tools">
@@ -772,8 +803,12 @@ img{max-width:100%}
           <div class="job-row">
             <img id="cover" class="cover hidden" alt="">
             <div id="cover-ph" class="cover cover-ph">
-              <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M3 7l9 5 9-5"/><path d="M12 12v10"/>
+              <svg class="holo" viewBox="0 0 100 100" aria-hidden="true">
+                <g class="solid">
+                  <g id="holo-edges"></g>
+                  <g id="holo-verts"></g>
+                </g>
+                <rect class="scan" x="0" y="-14" width="100" height="14" fill="url(#g-scan)"/>
               </svg>
             </div>
             <div class="job-meta">
@@ -923,6 +958,15 @@ const RING_C = 2 * Math.PI * 60;
 const DIAL_R = 42;
 const DIAL_C = 2 * Math.PI * DIAL_R;
 
+/**
+ * El holograma ocupa el hueco del proyecto en lugar de la portada de Bambu.
+ *
+ * Para los ficheros .gcode.3mf la nube no manda un render del modelo, sino
+ * siempre el mismo icono generico, asi que la miniatura no aportaba nada.
+ * Pon esto a `true` si prefieres recuperar la portada cuando exista.
+ */
+const SHOW_COVER = false;
+
 // Notification no existe en contextos no seguros (http:// por IP de la LAN).
 const CAN_NOTIFY = typeof Notification !== 'undefined';
 const CAN_PUSH = 'serviceWorker' in navigator && 'PushManager' in window;
@@ -1062,7 +1106,7 @@ function renderOrb(s, cycle) {
   const orb = $('orb');
   orb.className = 'orb' + (tone ? ' ' + tone : '');
   orb.title = label;
-  $('printer-state').textContent = label;
+  orb.setAttribute('aria-label', label);
   $('orb-icon').innerHTML =
     `<svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">${icon}</svg>`;
 }
@@ -1341,8 +1385,9 @@ function renderFilament(s) {
     badgeText = 'cambiando filamento';
     note = 'la impresora está moviendo el filamento';
   } else if (active) {
+    // Sin "· imprimiendo": el estado de la impresion ya se cuenta en su panel.
     tone = feeding ? '' : 'is-idle';
-    badgeText = feeding ? 'en uso · imprimiendo' : 'cargado';
+    badgeText = feeding ? 'en uso' : 'cargado';
     note = `${active.label} · ${active.loc}`;
   } else if (!loaded.length) {
     tone = 'is-none';
@@ -1353,6 +1398,131 @@ function renderFilament(s) {
   $('fil-badge').className = 'fil-badge' + (tone ? ' ' + tone : '');
   $('fil-badge-text').textContent = badgeText;
   $('fil-note').textContent = note;
+}
+
+// ===========================================================================
+// Holograma del proyecto
+//
+// Sustituye al icono fijo cuando el trabajo no trae portada. Es un icosaedro
+// de verdad: los 12 vertices y las 30 aristas salen de la definicion con la
+// razon aurea, y cada fotograma se rota y se proyecta. Las aristas de detras
+// se apagan segun su profundidad, que es lo que da la sensacion de volumen
+// en una figura tan pequena.
+// ===========================================================================
+
+const HOLO = (() => {
+  const PHI = (1 + Math.sqrt(5)) / 2;
+  const raw = [];
+  for (const a of [-1, 1]) {
+    for (const b of [-1, 1]) {
+      raw.push([0, a, b * PHI], [a, b * PHI, 0], [b * PHI, 0, a]);
+    }
+  }
+  // Normalizado al radio 1 para que el tamano no dependa de PHI.
+  const r = Math.hypot(1, PHI);
+  const verts = raw.map((v) => v.map((c) => c / r));
+
+  // Aristas = pares a la distancia minima. Sale mas fiable que escribir a
+  // mano los 30 indices, y no hay forma de equivocarse.
+  const edges = [];
+  let min = Infinity;
+  const d2 = (i, j) =>
+    (verts[i][0] - verts[j][0]) ** 2 +
+    (verts[i][1] - verts[j][1]) ** 2 +
+    (verts[i][2] - verts[j][2]) ** 2;
+  for (let i = 0; i < verts.length; i++) {
+    for (let j = i + 1; j < verts.length; j++) min = Math.min(min, d2(i, j));
+  }
+  for (let i = 0; i < verts.length; i++) {
+    for (let j = i + 1; j < verts.length; j++) {
+      if (d2(i, j) < min * 1.05) edges.push([i, j]);
+    }
+  }
+  return { verts, edges };
+})();
+
+const NS = 'http://www.w3.org/2000/svg';
+let holoEdgeEls = [];
+let holoVertEls = [];
+let holoRaf = 0;
+
+function buildHolo() {
+  const eg = $('holo-edges');
+  const vg = $('holo-verts');
+  if (!eg || holoEdgeEls.length) return;
+
+  holoEdgeEls = HOLO.edges.map(() => {
+    const l = document.createElementNS(NS, 'line');
+    l.setAttribute('class', 'edge');
+    eg.appendChild(l);
+    return l;
+  });
+  holoVertEls = HOLO.verts.map(() => {
+    const c = document.createElementNS(NS, 'circle');
+    c.setAttribute('class', 'vtx');
+    vg.appendChild(c);
+    return c;
+  });
+}
+
+/** Un fotograma: rota, proyecta y reparte opacidad segun profundidad. */
+function drawHolo(t) {
+  const R = 33;
+  const D = 3.4; // distancia de camara; da algo de perspectiva sin deformar
+
+  const ay = t * 0.00062;                        // giro constante
+  const ax = 0.38 + Math.sin(t * 0.00029) * 0.16; // cabeceo lento
+  const cy = Math.cos(ay), sy = Math.sin(ay);
+  const cx = Math.cos(ax), sx = Math.sin(ax);
+
+  const p = HOLO.verts.map(([x, y, z]) => {
+    const X = x * cy + z * sy;
+    const Z0 = -x * sy + z * cy;
+    const Y = y * cx - Z0 * sx;
+    const Z = y * sx + Z0 * cx;
+    const k = D / (D - Z);
+    return { x: 50 + X * R * k, y: 50 + Y * R * k, z: Z };
+  });
+
+  for (let i = 0; i < holoEdgeEls.length; i++) {
+    const [a, b] = HOLO.edges[i];
+    const el = holoEdgeEls[i];
+    el.setAttribute('x1', p[a].x.toFixed(1));
+    el.setAttribute('y1', p[a].y.toFixed(1));
+    el.setAttribute('x2', p[b].x.toFixed(1));
+    el.setAttribute('y2', p[b].y.toFixed(1));
+    const depth = (p[a].z + p[b].z) / 2;          // -1 detras, +1 delante
+    const f = (depth + 1) / 2;
+    el.setAttribute('opacity', (0.13 + f * 0.87).toFixed(2));
+    el.setAttribute('stroke-width', (0.7 + f * 0.9).toFixed(2));
+  }
+
+  for (let i = 0; i < holoVertEls.length; i++) {
+    const el = holoVertEls[i];
+    const f = (p[i].z + 1) / 2;
+    el.setAttribute('cx', p[i].x.toFixed(1));
+    el.setAttribute('cy', p[i].y.toFixed(1));
+    el.setAttribute('r', (0.9 + f * 1.3).toFixed(2));
+    el.setAttribute('opacity', (0.2 + f * 0.8).toFixed(2));
+  }
+}
+
+function startHolo() {
+  buildHolo();
+  // Una pose ya dibujada antes de arrancar el bucle: si no, el primer pintado
+  // muestra el marco vacio hasta que llega el primer fotograma.
+  drawHolo(2400);
+  if (REDUCED) return;                       // pose fija, sin movimiento
+  if (holoRaf) return;
+  const loop = (now) => {
+    holoRaf = requestAnimationFrame(loop);
+    // Nada que dibujar si hay portada de verdad o la pestana esta oculta:
+    // es decoracion, no tiene por que gastar bateria de fondo.
+    if (document.visibilityState !== 'visible') return;
+    if ($('cover-ph').classList.contains('hidden')) return;
+    drawHolo(now);
+  };
+  holoRaf = requestAnimationFrame(loop);
 }
 
 // ===========================================================================
@@ -1409,6 +1579,7 @@ function start() {
   $('app').classList.remove('hidden');
   $('statusbar').classList.remove('hidden');
   buildGauges();
+  startHolo();
   connectWs();
   startCameraLoop();
   setInterval(paintCamAge, 1000);
@@ -1550,7 +1721,7 @@ function renderMeta(s) {
 
 function renderTask(t) {
   if (!t) return;
-  if (t.cover) {
+  if (SHOW_COVER && t.cover) {
     const img = $('cover');
     img.onload = () => { img.classList.remove('hidden'); $('cover-ph').classList.add('hidden'); };
     img.onerror = () => { img.classList.add('hidden'); $('cover-ph').classList.remove('hidden'); };

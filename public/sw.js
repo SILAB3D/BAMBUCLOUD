@@ -20,6 +20,10 @@ const CACHE = 'bambu-shell-v4';
 // cachear: tampoco recibe los push, que es lo que de verdad importa aqui.
 const SHELL = ['/', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png'];
 
+// Nada de lo que tenga que ver con la cache puede tumbar la instalacion: si
+// `waitUntil` recibe una promesa rechazada, el worker no llega a activarse, y
+// un worker inactivo tampoco recibe los push. La cache es una comodidad; el
+// aviso de "ya puedes retirarla" no lo es. Por eso todo va con su red debajo.
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches
@@ -27,6 +31,7 @@ self.addEventListener('install', (event) => {
       // Uno a uno y tolerando fallos: que falte un icono no puede impedir que
       // el worker se active.
       .then((c) => Promise.all(SHELL.map((url) => c.add(url).catch(() => {}))))
+      .catch((err) => console.warn('[sw] sin cache de armazon:', err.message))
       .then(() => self.skipWaiting()),
   );
 });
@@ -36,6 +41,7 @@ self.addEventListener('activate', (event) => {
     caches
       .keys()
       .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .catch(() => {})
       .then(() => self.clients.claim()),
   );
 });
@@ -55,18 +61,20 @@ self.addEventListener('fetch', (event) => {
       .then((res) => {
         if (res && res.ok && res.type === 'basic') {
           const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(request, copy));
+          caches.open(CACHE).then((c) => c.put(request, copy)).catch(() => {});
         }
         return res;
       })
       .catch(async () => {
-        const hit = await caches.match(request);
-        if (hit) return hit;
-        // Navegacion sin red y sin copia exacta: servimos el armazon.
-        if (request.mode === 'navigate') {
-          const shell = await caches.match('/');
-          if (shell) return shell;
-        }
+        try {
+          const hit = await caches.match(request);
+          if (hit) return hit;
+          // Navegacion sin red y sin copia exacta: servimos el armazon.
+          if (request.mode === 'navigate') {
+            const shell = await caches.match('/');
+            if (shell) return shell;
+          }
+        } catch { /* sin cache disponible: no hay nada que ofrecer */ }
         return Response.error();
       }),
   );
