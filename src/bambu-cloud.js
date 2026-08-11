@@ -345,7 +345,8 @@ export class BambuCloud extends EventEmitter {
           this.emit('error', new Error(`Fallo al suscribirse a ${reportTopic}: ${err.message}`));
           return;
         }
-        this.emit('status', { connected: true, detail: 'Suscrito, pidiendo sincronizacion' });
+        // Sin aviso de "suscrito, pidiendo sincronizacion": es un estado que
+        // dura decimas y el boton de sincronizar ya cuenta lo mismo mejor.
         this.requestSync();
         // La impresora deja de mandar el estado completo con el tiempo;
         // un pushall periodico mantiene el estado fresco.

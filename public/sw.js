@@ -13,18 +13,21 @@
  * dato viejo es peor que ningun dato.
  */
 
-const CACHE = 'bambu-shell-v3';
-const SHELL = [
-  '/',
-  '/index.html',
-  '/manifest.webmanifest',
-  '/icon-192.png',
-  '/icon-512.png',
-];
+const CACHE = 'bambu-shell-v4';
+// Sin '/index.html': el servidor lo entrega en '/', y pedir los dos en el
+// mismo addAll hace que el navegador aborte la instalacion entera con
+// "Entry already exists". Un Service Worker que no instala no solo deja de
+// cachear: tampoco recibe los push, que es lo que de verdad importa aqui.
+const SHELL = ['/', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()),
+    caches
+      .open(CACHE)
+      // Uno a uno y tolerando fallos: que falte un icono no puede impedir que
+      // el worker se active.
+      .then((c) => Promise.all(SHELL.map((url) => c.add(url).catch(() => {}))))
+      .then(() => self.skipWaiting()),
   );
 });
 
@@ -60,7 +63,10 @@ self.addEventListener('fetch', (event) => {
         const hit = await caches.match(request);
         if (hit) return hit;
         // Navegacion sin red y sin copia exacta: servimos el armazon.
-        if (request.mode === 'navigate') return caches.match('/index.html');
+        if (request.mode === 'navigate') {
+          const shell = await caches.match('/');
+          if (shell) return shell;
+        }
         return Response.error();
       }),
   );

@@ -342,73 +342,79 @@ img{max-width:100%}
 /* ==========================================================================
    3. FILAMENTO
    ========================================================================== */
-.fil{flex:1;display:flex;flex-direction:column;gap:14px;justify-content:center}
+.fil{flex:1;display:flex;flex-direction:column;gap:12px}
 
-.fil-hero{display:flex;gap:14px;align-items:center}
-/* Bobina protagonista: disco de color con el anillo de nivel alrededor. */
-.spool{position:relative;width:clamp(72px,12vw,92px);aspect-ratio:1;flex:none;display:grid;
-  place-items:center}
-.spool svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
-.spool .st{stroke:rgba(255,255,255,.07)}
-.spool .sa{stroke:var(--c,#39414f);stroke-linecap:round;
-  transition:stroke-dashoffset .9s var(--ease),stroke .5s}
-.spool .disc{
-  position:relative;width:60%;aspect-ratio:1;border-radius:50%;background:var(--c,#2a3140);
-  box-shadow:inset 0 0 0 3px rgba(255,255,255,.32),0 3px 14px rgba(0,0,0,.55);
-  transition:background .6s var(--ease);
-}
-.spool .disc::after{
-  content:"";position:absolute;inset:33%;border-radius:50%;background:var(--surface);
-  box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);
-}
-/* Alimentando: halo girando alrededor de la bobina en uso. */
-.spool::before{
-  content:"";position:absolute;inset:-4px;border-radius:50%;opacity:0;
-  background:conic-gradient(from 0deg,transparent 0 66%,rgba(0,212,146,.55) 86%,transparent 100%);
-  transition:opacity .4s;
-}
-.fil.is-feeding .spool::before{opacity:1;animation:spin 2.6s linear infinite}
-.fil.is-changing .spool .disc{animation:swap 1.4s var(--ease) infinite}
-
-.fil-info{min-width:0;flex:1}
+/* Cabecera: que esta pasando con el filamento, en una linea. */
+.fil-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .fil-badge{
-  display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;
-  font-size:10px;font-weight:650;letter-spacing:.05em;text-transform:uppercase;
+  display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:99px;
+  font-size:10px;font-weight:650;letter-spacing:.05em;text-transform:uppercase;flex:none;
   background:rgba(0,212,146,.12);color:var(--accent);border:1px solid rgba(0,212,146,.28);
+  transition:background .35s,color .35s,border-color .35s;
 }
 .fil-badge.is-idle{background:var(--surface-2);color:var(--dim);border-color:var(--line)}
 .fil-badge.is-changing{background:rgba(245,165,36,.12);color:var(--warn);
   border-color:rgba(245,165,36,.3)}
 .fil-badge.is-none{background:rgba(255,92,92,.1);color:var(--err);
   border-color:rgba(255,92,92,.26)}
-.fil-badge i{width:6px;height:6px;border-radius:50%;background:currentColor;font-style:normal}
-.fil.is-changing .fil-badge i{animation:blink .9s ease-in-out infinite}
-
-.fil-mat{font-size:clamp(17px,3vw,22px);font-weight:660;letter-spacing:-.02em;margin-top:7px;
+.fil-badge i{width:6px;height:6px;border-radius:50%;background:currentColor;font-style:normal;
+  flex:none}
+.fil.is-feeding .fil-badge i,.fil.is-changing .fil-badge i{animation:blink 1.4s ease-in-out infinite}
+.fil-note{flex:1;min-width:0;font-size:12.5px;color:var(--faint);text-align:right;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.fil-loc{font-size:12.5px;color:var(--dim);margin-top:2px;white-space:nowrap;overflow:hidden;
-  text-overflow:ellipsis}
-.fil-remain{margin-top:9px}
-.fil-remain .track-bar{height:6px}
-.fil-remain .track-bar .fill{background:var(--c,var(--accent));transition:width .9s var(--ease)}
-.fil-remain .cap{display:flex;justify-content:space-between;font-size:10.5px;color:var(--faint);
-  margin-top:5px}
 
-/* Resto de bobinas: fila compacta, sin protagonismo. */
-.fil-strip{display:flex;gap:8px;flex-wrap:wrap}
-.fil-chip{
-  display:flex;align-items:center;gap:7px;padding:6px 10px 6px 7px;border-radius:99px;
-  background:var(--surface-2);border:1px solid var(--line);font-size:11.5px;color:var(--dim);
-  animation:fade-in .4s var(--ease) both;
+/* Rejilla de bandejas: refleja el AMS tal cual, dos por fila. */
+.fil-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;flex:1;align-content:center}
+.fil-cell{
+  display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:var(--r-md);
+  background:var(--surface-2);border:1px solid var(--line);min-width:0;position:relative;
+  transition:border-color .4s var(--ease),background .4s,box-shadow .4s var(--ease),opacity .4s;
 }
-.fil-chip .swatch{
-  width:14px;height:14px;border-radius:50%;flex:none;background:var(--c,#39414f);
-  box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.3);
+/* La bobina externa no pertenece al AMS: ocupa su propia fila entera. */
+.fil-cell.wide{grid-column:1/-1}
+
+.fil-cell .disc{
+  position:relative;width:30px;height:30px;border-radius:50%;flex:none;background:var(--c,#39414f);
+  box-shadow:inset 0 0 0 2.5px rgba(255,255,255,.32),0 2px 8px rgba(0,0,0,.45);
+  transition:background .5s;
 }
-.fil-chip b{color:var(--text);font-weight:600}
-.fil-chip .pc{color:var(--faint);font-variant-numeric:tabular-nums}
-.fil-strip-label{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);
-  margin-bottom:7px}
+.fil-cell .disc::after{
+  content:"";position:absolute;inset:34%;border-radius:50%;background:var(--surface);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);
+}
+.fil-cell .t{min-width:0;flex:1}
+.fil-cell .t b{
+  display:block;font-size:13.5px;font-weight:620;letter-spacing:-.01em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.fil-cell .t small{
+  display:block;font-size:10px;color:var(--faint);text-transform:uppercase;
+  letter-spacing:.055em;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+
+/* Bandeja vacia: sigue ocupando su hueco para que la rejilla no se descuadre. */
+.fil-cell.void{border-style:dashed;background:transparent;opacity:.45}
+.fil-cell.void .disc{background:transparent;box-shadow:inset 0 0 0 2px var(--line-strong)}
+.fil-cell.void .disc::after{display:none}
+
+/* En uso: el borde toma el color del propio filamento. Si no hay ninguno en
+   uso no se resalta nada, y la rejilla se lee como un inventario a secas. */
+.fil-cell.active{
+  background:var(--surface);border-color:var(--c,var(--accent));
+  box-shadow:0 0 0 1px var(--c,var(--accent)),0 6px 20px -8px var(--c,var(--accent));
+}
+.fil-cell .use{
+  display:none;position:absolute;top:-7px;right:10px;align-items:center;gap:4px;
+  padding:1px 7px;border-radius:99px;font-size:9px;font-weight:700;letter-spacing:.06em;
+  text-transform:uppercase;background:var(--surface-2);color:var(--c,var(--accent));
+  border:1px solid var(--c,var(--accent));
+}
+.fil-cell.active .use{display:inline-flex}
+.fil.is-changing .fil-cell.active{
+  border-color:var(--warn);box-shadow:0 0 0 1px var(--warn),0 6px 20px -8px var(--warn);
+}
+.fil.is-changing .fil-cell.active .use{color:var(--warn);border-color:var(--warn)}
+.fil-empty{color:var(--faint);font-size:13px;text-align:center;padding:22px 0}
 
 /* ==========================================================================
    4. SENSORES
@@ -597,10 +603,6 @@ img{max-width:100%}
 }
 @keyframes pulse-bad{0%,100%{box-shadow:0 0 0 1px rgba(255,92,92,.25),0 3px 12px rgba(255,92,92,.3)}
                      50%{box-shadow:0 0 0 1px rgba(255,92,92,.4),0 3px 20px rgba(255,92,92,.55)}}
-@keyframes swap{
-  0%,100%{transform:rotateY(0) scale(1)}
-  50%{transform:rotateY(180deg) scale(.86)}
-}
 @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}
                  75%{transform:translateX(6px)}}
 
@@ -788,34 +790,13 @@ img{max-width:100%}
       <section class="card">
         <h2>Filamento <span class="tag" id="fil-tag"></span></h2>
         <div class="fil" id="fil">
-
-          <div class="fil-hero">
-            <div class="spool" id="spool">
-              <svg viewBox="0 0 100 100" aria-hidden="true">
-                <circle class="st" cx="50" cy="50" r="43" fill="none" stroke-width="7"/>
-                <circle class="sa" id="spool-arc" cx="50" cy="50" r="43" fill="none" stroke-width="7"
-                        transform="rotate(-90 50 50)"
-                        stroke-dasharray="270.18" stroke-dashoffset="270.18"/>
-              </svg>
-              <span class="disc" id="spool-disc"></span>
-            </div>
-
-            <div class="fil-info">
-              <span class="fil-badge is-idle" id="fil-badge"><i></i><span id="fil-badge-text">sin datos</span></span>
-              <div class="fil-mat" id="fil-mat">—</div>
-              <div class="fil-loc" id="fil-loc">esperando a la impresora</div>
-              <div class="fil-remain hidden" id="fil-remain">
-                <div class="track-bar"><div class="fill" id="fil-remain-fill"></div></div>
-                <div class="cap"><span>Restante en la bobina</span><span id="fil-remain-pc">—</span></div>
-              </div>
-            </div>
+          <div class="fil-head">
+            <span class="fil-badge is-idle" id="fil-badge">
+              <i></i><span id="fil-badge-text">sin datos</span>
+            </span>
+            <span class="fil-note" id="fil-note">esperando a la impresora</span>
           </div>
-
-          <div id="fil-others" class="hidden">
-            <div class="fil-strip-label">Otras bobinas</div>
-            <div class="fil-strip" id="fil-strip"></div>
-          </div>
-
+          <div class="fil-grid" id="fil-grid"></div>
         </div>
       </section>
     </div>
@@ -941,7 +922,6 @@ const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const RING_C = 2 * Math.PI * 60;
 const DIAL_R = 42;
 const DIAL_C = 2 * Math.PI * DIAL_R;
-const SPOOL_C = 2 * Math.PI * 43;
 
 // Notification no existe en contextos no seguros (http:// por IP de la LAN).
 const CAN_NOTIFY = typeof Notification !== 'undefined';
@@ -1131,8 +1111,10 @@ function renderStatusPanel() {
 
 function renderPrinting(s) {
   const pct = s?.percent ?? null;
+  // El anillo dice que esta pasando, no que representa el numero: el % ya se
+  // entiende solo, y "completado" no aportaba nada.
   setRing(pct, s?.state === 'PAUSE' ? 'en pausa'
-    : s?.printing ? 'completado'
+    : s?.printing ? 'imprimiendo'
     : s?.state === 'FINISH' ? 'terminada'
     : (s?.stateText || '—'));
 
@@ -1160,7 +1142,7 @@ function renderCooling(cycle, s) {
   const total = cycle.coolMs || 15 * 60_000;
   const pct = Math.max(0, Math.min(100, ((total - left) / total) * 100));
 
-  setRing(pct, 'enfriando la cama');
+  setRing(pct, 'enfriando');
 
   $('tile1-label').textContent = 'Listo en';
   $('tile1-value').textContent = countdown(left);
@@ -1253,34 +1235,71 @@ $('btn-collected').onclick = async () => {
 /** Etapas en las que la impresora esta moviendo filamento, no imprimiendo. */
 const CHANGING_STAGES = new Set([13, 22, 25, 26, 29, 30]);
 
+/**
+ * Las bandejas vacias tambien entran: la rejilla representa el AMS fisico, y
+ * si desaparecieran las vacias las bobinas irian saltando de casilla cada vez
+ * que se agota una.
+ */
 function filamentItems(s) {
   const items = [];
   for (const unit of s.ams || []) {
     for (const tray of unit.trays || []) {
-      if (tray.empty) continue;
       items.push({
         key: `ams-${unit.id}-${tray.id}`,
-        label: tray.subBrand || tray.type || 'Filamento',
-        loc: `Bandeja ${tray.id + 1} · AMS`,
-        short: `B${tray.id + 1}`,
+        empty: Boolean(tray.empty),
+        label: tray.empty ? 'Vacía' : tray.subBrand || tray.type || 'Filamento',
+        loc: `Bandeja ${tray.id + 1}`,
         color: tray.color || '#39414f',
-        remain: tray.remain,
-        active: !s.usingExternalSpool && s.activeTray === tray.id,
+        active: !tray.empty && !s.usingExternalSpool && s.activeTray === tray.id,
+        wide: false,
       });
     }
   }
   if (s.externalTray?.type) {
     items.push({
       key: 'ext',
+      empty: false,
       label: s.externalTray.type,
       loc: 'Bobina externa',
-      short: 'Externa',
       color: s.externalTray.color || '#39414f',
-      remain: s.externalTray.remain,
       active: Boolean(s.usingExternalSpool),
+      wide: true, // no es del AMS: fila propia
     });
   }
   return items;
+}
+
+/**
+ * La rejilla solo se reconstruye cuando cambia el juego de bobinas. Antes se
+ * reescribia el HTML en cada report — varias veces por segundo mientras
+ * imprime — y como cada casilla trae animacion de entrada, el panel parpadeaba
+ * sin parar. Ahora lo que cambia a menudo (cual esta en uso) es un simple
+ * toggle de clase.
+ */
+let filSignature = null;
+let filCells = [];
+
+function buildFilamentGrid(items) {
+  const grid = $('fil-grid');
+  if (!items.length) {
+    grid.innerHTML = '<div class="fil-empty">Sin datos de filamento</div>';
+    filCells = [];
+    return;
+  }
+  grid.innerHTML = items
+    .map(
+      (i) => `<div class="fil-cell${i.empty ? ' void' : ''}${i.wide ? ' wide' : ''}"
+                   style="--c:${escapeAttr(i.color)}" title="${escapeAttr(i.label)}">
+        <span class="use">en uso</span>
+        <span class="disc"></span>
+        <div class="t"><b>${escapeHtml(i.label)}</b><small>${escapeHtml(i.loc)}</small></div>
+      </div>`,
+    )
+    .join('');
+  filCells = [...grid.querySelectorAll('.fil-cell')].map((el, idx) => ({
+    key: items[idx].key,
+    el,
+  }));
 }
 
 function renderFilament(s) {
@@ -1288,75 +1307,52 @@ function renderFilament(s) {
   if (!s) return;
 
   const items = filamentItems(s);
+  const loaded = items.filter((i) => !i.empty);
   const active = items.find((i) => i.active) || null;
   const changing = Boolean(s.amsBusy || CHANGING_STAGES.has(s.stageCode));
   const feeding = Boolean(active && s.printing && !changing);
 
   fil.classList.toggle('is-feeding', feeding);
   fil.classList.toggle('is-changing', changing);
-  $('fil-tag').textContent = items.length
-    ? `${items.length} bobina${items.length > 1 ? 's' : ''}`
+  $('fil-tag').textContent = loaded.length
+    ? `${loaded.length} bobina${loaded.length > 1 ? 's' : ''}`
     : '';
 
-  // --- Estado destacado ---
-  const badge = $('fil-badge');
+  // La firma deja fuera lo que cambia solo (cual esta en uso): asi la rejilla
+  // se rehace al insertar o sacar una bobina, y nada mas.
+  const sig = items.map((i) => `${i.key}|${i.empty}|${i.color}|${i.label}|${i.wide}`).join('~');
+  if (sig !== filSignature) {
+    filSignature = sig;
+    buildFilamentGrid(items);
+  }
+
+  for (const cell of filCells) {
+    const item = items.find((i) => i.key === cell.key);
+    cell.el.classList.toggle('active', Boolean(item?.active));
+  }
+
+  // --- Cabecera ---
   let tone = 'is-idle';
   let badgeText = 'ninguno en uso';
-  let mat = '—';
-  let loc = 'ninguna bobina seleccionada';
-  let color = '#39414f';
-  let remain = null;
+  let note = loaded.length ? 'ninguna bobina seleccionada' : '';
 
   if (changing) {
     tone = 'is-changing';
     badgeText = 'cambiando filamento';
-    mat = active ? active.label : 'Cambio en curso';
-    loc = 'la impresora está moviendo el filamento';
-    color = active?.color || '#f5a524';
-    remain = active?.remain ?? null;
+    note = 'la impresora está moviendo el filamento';
   } else if (active) {
     tone = feeding ? '' : 'is-idle';
     badgeText = feeding ? 'en uso · imprimiendo' : 'cargado';
-    mat = active.label;
-    loc = active.loc;
-    color = active.color;
-    remain = active.remain;
-  } else if (!items.length) {
+    note = `${active.label} · ${active.loc}`;
+  } else if (!loaded.length) {
     tone = 'is-none';
     badgeText = 'sin filamento';
-    mat = 'Ninguno insertado';
-    loc = 'inserta una bobina para imprimir';
+    note = 'inserta una bobina para imprimir';
   }
 
-  badge.className = 'fil-badge' + (tone ? ' ' + tone : '');
+  $('fil-badge').className = 'fil-badge' + (tone ? ' ' + tone : '');
   $('fil-badge-text').textContent = badgeText;
-  $('fil-mat').textContent = mat;
-  $('fil-loc').textContent = loc;
-
-  $('spool').style.setProperty('--c', color);
-  $('fil-remain').style.setProperty('--c', color);
-
-  const known = remain != null && remain >= 0;
-  $('spool-arc').style.strokeDashoffset =
-    String(SPOOL_C * (1 - (known ? remain / 100 : 0)));
-  $('fil-remain').classList.toggle('hidden', !known);
-  if (known) {
-    $('fil-remain-fill').style.width = `${remain}%`;
-    $('fil-remain-pc').textContent = `${remain}%`;
-  }
-
-  // --- Resto de bobinas ---
-  const others = items.filter((i) => i !== active);
-  $('fil-others').classList.toggle('hidden', others.length === 0);
-  $('fil-strip').innerHTML = others
-    .map(
-      (i) => `<span class="fil-chip" style="--c:${escapeAttr(i.color)}" title="${escapeAttr(i.label)}">
-        <span class="swatch"></span><b>${escapeHtml(i.short)}</b>
-        <span>${escapeHtml(i.label)}</span>
-        ${i.remain >= 0 ? `<span class="pc">${i.remain}%</span>` : ''}
-      </span>`,
-    )
-    .join('');
+  $('fil-note').textContent = note;
 }
 
 // ===========================================================================
