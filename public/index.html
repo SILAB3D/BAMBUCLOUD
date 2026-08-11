@@ -10,6 +10,9 @@
 <meta name="apple-mobile-web-app-title" content="Bambu Status">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="/manifest.webmanifest">
+<!-- El SVG manda donde se soporta (nitido a cualquier tamano); el PNG es el
+     recambio para los navegadores que aun no lo aceptan como favicon. -->
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="/icon-192.png" sizes="192x192" type="image/png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <title>Bambu Lab · Estado</title>
@@ -109,20 +112,54 @@ img{max-width:100%}
 /* ==========================================================================
    Puertas de acceso
    ========================================================================== */
-.gate{max-width:360px;margin:0 auto;padding:14vh 20px 40px;text-align:center;
-  animation:fade-up .5s var(--ease) both}
+/* Centrado real en el hueco disponible. `margin:auto` dentro de un flex, en
+   vez de place-items, para que al abrirse el teclado del movil la tarjeta se
+   pueda desplazar sin que se le recorte la parte de arriba. */
+.gate{
+  position:fixed;inset:0;z-index:30;display:flex;overflow:auto;
+  padding:24px calc(20px + env(safe-area-inset-left)) calc(24px + env(safe-area-inset-bottom));
+  background:
+    radial-gradient(680px 460px at 50% 34%, rgba(62,201,255,.10), transparent 64%),
+    var(--bg);
+}
+/* Misma tarjeta que los paneles del dashboard: aqui no hay un lenguaje
+   distinto, solo un panel mas, centrado y a solas. */
+.gate-card{
+  margin:auto;width:100%;max-width:352px;text-align:center;
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
+  /* Abajo menos: el hueco reservado del mensaje de error ya suma 20px, y sin
+     esto la tarjeta se ve descentrada aunque no lo este. */
+  padding:30px 26px 16px;box-shadow:0 26px 64px -26px rgba(0,0,0,.72);
+  animation:fade-up .55s var(--ease) both;
+}
+
+/* Emblema: el mismo icosaedro del icono y de la pantalla de carga. */
+.gate-holo{width:88px;aspect-ratio:1;margin:0 auto 16px;position:relative}
+.gate-holo::before{
+  content:"";position:absolute;inset:-12%;border-radius:50%;
+  background:radial-gradient(circle,rgba(62,201,255,.18),transparent 68%);
+}
+/* La puerta del codigo de Bambu no es la portada de la app: lleva su propio
+   icono para que se note que es otro paso, no un reintento de contrasena. */
 .gate .logo{
-  width:52px;height:52px;margin:0 auto 18px;border-radius:16px;display:grid;place-items:center;
-  background:linear-gradient(145deg,rgba(0,212,146,.22),rgba(62,201,255,.12));
+  width:54px;height:54px;margin:0 auto 16px;border-radius:var(--r-md);
+  display:grid;place-items:center;
+  background:linear-gradient(145deg,rgba(62,201,255,.20),rgba(0,212,146,.08));
   border:1px solid var(--line-strong);
 }
-.gate h1{font-size:20px;margin:0 0 6px;font-weight:650;letter-spacing:-.01em}
-.gate p{color:var(--dim);font-size:14px;margin:0}
+
+.gate h1{font-size:20px;margin:0 0 5px;font-weight:660;letter-spacing:-.02em}
+.gate .sub{
+  color:var(--faint);font-size:11px;margin:0;text-transform:uppercase;letter-spacing:.07em;
+}
+.gate .hint{color:var(--dim);font-size:13.5px;margin:14px 0 0;line-height:1.5}
 .gate input{
   width:100%;padding:13px 15px;margin:20px 0 12px;font-size:16px;font-family:inherit;
-  border-radius:var(--r-md);border:1px solid var(--line-strong);
-  background:var(--surface);color:var(--text);transition:border-color .2s,box-shadow .2s;
+  border-radius:var(--r-md);border:1px solid var(--line-strong);text-align:center;
+  letter-spacing:.02em;
+  background:var(--surface-2);color:var(--text);transition:border-color .2s,box-shadow .2s;
 }
+.gate input::placeholder{letter-spacing:0}
 .gate input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px rgba(0,212,146,.13)}
 .primary{
   width:100%;padding:13px;font-size:15px;font-weight:650;cursor:pointer;
@@ -141,7 +178,7 @@ img{max-width:100%}
 #app{
   max-width:1180px;margin-inline:auto;
   padding:calc(16px + env(safe-area-inset-top)) var(--pad)
-          calc(66px + env(safe-area-inset-bottom));
+          calc(20px + env(safe-area-inset-bottom));
 }
 .stack{display:grid;gap:var(--gap)}
 .row{display:grid;gap:var(--gap);align-items:stretch;grid-template-columns:1fr}
@@ -231,6 +268,17 @@ img{max-width:100%}
   font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;
   color:var(--dim);background:var(--surface-2);border:1px solid var(--line);
 }
+/* Firmware, wifi y hora del ultimo dato. Vivian en la barra inferior; sin ella
+   se quedan aqui, que es donde esta el resto de la identidad de la maquina.
+   En una sola linea: si se envuelve, la tarjeta crece y el circulo de estado
+   deja de estar centrado con el nombre. Lo que no cabe se recorta. */
+.basic-meta{
+  display:flex;gap:10px;margin-top:5px;
+  font-size:11.5px;color:var(--faint);line-height:1.3;
+  white-space:nowrap;overflow:hidden;
+}
+.basic-meta span{overflow:hidden;text-overflow:ellipsis}
+.basic-meta span:empty{display:none}
 
 /* Circulo de estado de impresion.
    El patron de guiones suma justo la circunferencia (65.97 + 197.92 = 263.89):
@@ -595,7 +643,7 @@ img{max-width:100%}
 }
 .sheet input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px rgba(0,212,146,.13)}
 .toast{
-  position:fixed;left:50%;bottom:calc(72px + env(safe-area-inset-bottom));transform:translateX(-50%);
+  position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom));transform:translateX(-50%);
   z-index:80;padding:10px 16px;border-radius:99px;font-size:13px;max-width:calc(100% - 32px);
   background:rgba(23,30,42,.96);border:1px solid var(--line-strong);
   box-shadow:0 8px 28px rgba(0,0,0,.5);animation:fade-up .3s var(--ease) both;
@@ -622,7 +670,6 @@ img{max-width:100%}
 @keyframes fade-up{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 @keyframes fade-in{from{opacity:0}to{opacity:1}}
 @keyframes slide-in{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
-@keyframes ping{0%{transform:scale(1);opacity:.55}70%,100%{transform:scale(2.8);opacity:0}}
 @keyframes throb{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.86)}}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -705,33 +752,42 @@ img{max-width:100%}
 
 <!-- ======================= Puerta: contrasena ============================= -->
 <div id="gate" class="gate hidden">
-  <div class="logo">
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#00d492"
-         stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M3 7l9 5 9-5"/><path d="M12 12v10"/>
-    </svg>
+  <div class="gate-card">
+    <div class="gate-holo">
+      <svg class="holo" viewBox="0 0 100 100" aria-hidden="true">
+        <g class="solid">
+          <g id="gate-edges"></g>
+          <g id="gate-verts"></g>
+        </g>
+        <rect class="scan" x="9" y="-14" width="82" height="14" fill="url(#g-scan)"/>
+      </svg>
+    </div>
+    <h1>Bambu Lab</h1>
+    <p class="sub">Estado de impresión</p>
+    <input id="gate-pass" type="password" placeholder="Contraseña"
+           autocomplete="current-password">
+    <button id="gate-btn" class="primary">Entrar</button>
+    <p id="gate-msg" class="msg"></p>
   </div>
-  <h1>Bambu Lab · Estado</h1>
-  <p>Introduce la contraseña de acceso</p>
-  <input id="gate-pass" type="password" placeholder="Contraseña" autocomplete="current-password">
-  <button id="gate-btn" class="primary">Entrar</button>
-  <p id="gate-msg" class="msg"></p>
 </div>
 
 <!-- ======================= Puerta: codigo de Bambu ======================== -->
 <div id="code-gate" class="gate hidden">
-  <div class="logo">
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3ec9ff"
-         stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>
-    </svg>
+  <div class="gate-card">
+    <div class="logo">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#3ec9ff"
+           stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>
+      </svg>
+    </div>
+    <h1>Verificación de Bambu</h1>
+    <p class="sub">Segundo paso</p>
+    <p class="hint" id="code-hint"></p>
+    <input id="code-input" type="text" inputmode="numeric" placeholder="Código"
+           autocomplete="one-time-code">
+    <button id="code-btn" class="primary">Verificar</button>
+    <p id="code-msg" class="msg"></p>
   </div>
-  <h1>Verificación de Bambu</h1>
-  <p id="code-hint"></p>
-  <input id="code-input" type="text" inputmode="numeric" placeholder="Código"
-         autocomplete="one-time-code">
-  <button id="code-btn" class="primary">Verificar</button>
-  <p id="code-msg" class="msg"></p>
 </div>
 
 <!-- ======================= Dashboard ====================================== -->
@@ -761,6 +817,9 @@ img{max-width:100%}
       <div class="basic-id">
         <h1 id="printer-name">Bambu Lab</h1>
         <span id="printer-model" class="model hidden"></span>
+        <div class="basic-meta">
+          <span id="meta-fw"></span><span id="meta-wifi"></span><span id="meta-updated"></span>
+        </div>
       </div>
 
       <div class="tools">
@@ -888,15 +947,6 @@ img{max-width:100%}
     </div>
 
   </main>
-</div>
-
-<!-- ======================= Barra de estado (abajo) ======================== -->
-<div id="statusbar" class="statusbar hidden">
-  <span id="dot" class="dot"></span>
-  <span id="conn" class="detail">Conectando…</span>
-  <span class="meta">
-    <span id="meta-fw"></span><span id="meta-wifi"></span><span id="meta-updated"></span>
-  </span>
 </div>
 
 <!-- ======================= Bienvenida / instalacion ======================= -->
@@ -1063,6 +1113,7 @@ let swReg = null;
 let wsOpen = false;
 let lastDataAt = null;     // ultima vez que llego un estado de la impresora
 let cloudOk = false;
+let statusDetail = '';     // motivo que da el servidor cuando algo va mal
 
 // ===========================================================================
 // Animacion
@@ -1571,6 +1622,25 @@ function drawHolo(holo, t) {
 let coverHolo = null;
 let holoRaf = 0;
 
+// Emblema de la pantalla de acceso. El bucle se cancela solo en cuanto la
+// puerta se oculta, asi que entrar deja de gastar fotogramas sin que haya que
+// acordarse de pararlo desde el manejador del boton.
+let gateHolo = null;
+let gateRaf = 0;
+
+function startGateHolo() {
+  if (!gateHolo) gateHolo = makeHolo('gate-edges', 'gate-verts', { thickness: 0.85 });
+  drawHolo(gateHolo, 1200);
+  if (REDUCED || gateRaf) return;
+  const loop = (now) => {
+    if ($('gate').classList.contains('hidden')) { gateRaf = 0; return; }
+    gateRaf = requestAnimationFrame(loop);
+    if (document.visibilityState !== 'visible') return;
+    drawHolo(gateHolo, now);
+  };
+  gateRaf = requestAnimationFrame(loop);
+}
+
 // ---------------------------------------------------------------------------
 // Pantalla de carga
 //
@@ -1621,12 +1691,17 @@ function startHolo() {
 // Acceso
 // ===========================================================================
 
+function showGate() {
+  $('gate').classList.remove('hidden');
+  startGateHolo();
+}
+
 async function checkSession() {
   try {
     const r = await fetch('/api/session').then((x) => x.json());
-    if (r.authed) start(); else $('gate').classList.remove('hidden');
+    if (r.authed) start(); else showGate();
   } catch {
-    $('gate').classList.remove('hidden');
+    showGate();
   }
 }
 
@@ -1658,7 +1733,6 @@ $('code-btn').onclick = async () => {
   if (res.ok) {
     $('code-gate').classList.add('hidden');
     $('app').classList.remove('hidden');
-    $('statusbar').classList.remove('hidden');
   } else failMsg($('code-msg'), j.error || 'Código rechazado');
 };
 $('code-input').onkeydown = (e) => { if (e.key === 'Enter') $('code-btn').click(); };
@@ -1669,7 +1743,6 @@ $('code-input').onkeydown = (e) => { if (e.key === 'Enter') $('code-btn').click(
 
 function start() {
   $('app').classList.remove('hidden');
-  $('statusbar').classList.remove('hidden');
   buildGauges();
   startHolo();
   connectWs();
@@ -1726,11 +1799,11 @@ function connectWs() {
     else if (type === 'notification') { pushFeed(payload); notifyBrowser(payload); }
   };
 
+  // Sin barra inferior, quien avisa de la caida es el boton de sincronizar:
+  // se pone en rojo y su `title` explica de que lado se ha perdido la conexion.
   ws.onclose = () => {
     wsOpen = false;
     paintSync();
-    $('dot').classList.remove('on');
-    $('conn').textContent = 'Desconectado del servidor, reintentando…';
     setTimeout(connectWs, 3000);
   };
 }
@@ -1738,7 +1811,6 @@ function connectWs() {
 function handleLoginPending(pending) {
   if (!pending) return;
   $('app').classList.add('hidden');
-  $('statusbar').classList.add('hidden');
   $('code-gate').classList.remove('hidden');
   $('code-hint').textContent = pending === 'tfa'
     ? 'Introduce el código de tu app de autenticación (2FA).'
@@ -1752,8 +1824,7 @@ function handleLoginPending(pending) {
 function renderStatus(s, connected) {
   const on = connected ?? s.connected;
   cloudOk = Boolean(on);
-  $('dot').classList.toggle('on', cloudOk);
-  $('conn').textContent = s.detail || (on ? 'Conectado' : 'Desconectado');
+  statusDetail = on ? '' : (s.detail || '');
   paintSync();
 }
 
@@ -1850,7 +1921,7 @@ function paintSync() {
   btn.title = ok
     ? 'Sincronizada · pulsa para forzar una actualización'
     : !wsOpen ? 'Sin conexión con el servidor'
-    : !cloudOk ? 'Sin conexión con Bambu Cloud'
+    : !cloudOk ? `Sin conexión con Bambu Cloud${statusDetail ? ` · ${statusDetail}` : ''}`
     : 'Datos desactualizados · pulsa para sincronizar';
 }
 
@@ -2089,7 +2160,9 @@ function notifyBrowser(e) {
   // Con Service Worker el aviso lo muestra el, para que el clic reenfoque la
   // PWA en vez de abrir una pestana suelta.
   if (swReg) {
-    swReg.showNotification('Bambu Lab', { body: e.text, tag: e.type, icon: '/icon-192.png' });
+    swReg.showNotification('Bambu Lab', {
+      body: e.text, tag: e.type, icon: '/icon-192.png', badge: '/badge-96.png',
+    });
   } else {
     new Notification('Bambu Lab', { body: e.text, tag: e.type });
   }

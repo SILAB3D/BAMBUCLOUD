@@ -49,12 +49,16 @@ npm install
 cp .env.example .env
 ```
 
-Edita `.env` con tu email y contraseña de Bambu, una `DASHBOARD_PASSWORD` y un `SESSION_SECRET`:
+Edita `.env` con tu email y contraseña de Bambu y una `DASHBOARD_PASSWORD`:
 
 ```bash
-openssl rand -hex 32   # para SESSION_SECRET
+openssl rand -hex 32   # para SESSION_SECRET (opcional)
 openssl rand -hex 24   # para AGENT_TOKEN
 ```
+
+`SESSION_SECRET` es opcional: si no lo pones, el servidor genera uno la primera
+vez y lo guarda junto al resto del estado, así que las sesiones siguen valiendo
+tras un reinicio igualmente.
 
 Arranca:
 
@@ -100,8 +104,9 @@ Límites del plan gratuito que conviene tener presentes:
   que alguien abre el dashboard, así que en la práctica se recupera al primer acceso —
   pero si el servicio se reinicia mientras nadie mira, los avisos de esa impresión no
   llegarán.
-- Las sesiones viven en memoria, así que cada vez que el servicio despierta hay que
-  volver a introducir `DASHBOARD_PASSWORD`.
+- Las sesiones se guardan en ese mismo estado, así que sin disco también se pierden:
+  cada vez que el servicio despierta hay que volver a introducir `DASHBOARD_PASSWORD`.
+  Con disco, la sesión dura hasta que pulses *Salir del dashboard*.
 
 **Si quieres que nada de esto se pierda**: plan `starter` (7 $/mes) y descomenta el bloque
 `disk` de `render.yaml` (montado en `/data`). Con disco, historial, ajustes, suscripciones y
@@ -184,6 +189,7 @@ hace una vez por móvil.
 ### Panel de administración
 
 Botón del engranaje, arriba a la derecha → código **1510** (cambiable con `ADMIN_CODE`).
+El desbloqueo dura una hora: la sesión del dashboard no caduca, pero el panel sí.
 
 - **Enviar notificaciones**: interruptor general de los avisos de la app.
 - **Un interruptor por tipo de aviso**: impresión iniciada, terminada, enfriándose, lista para

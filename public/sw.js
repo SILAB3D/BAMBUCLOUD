@@ -13,12 +13,19 @@
  * dato viejo es peor que ningun dato.
  */
 
-const CACHE = 'bambu-shell-v4';
+const CACHE = 'bambu-shell-v5';
 // Sin '/index.html': el servidor lo entrega en '/', y pedir los dos en el
 // mismo addAll hace que el navegador aborte la instalacion entera con
 // "Entry already exists". Un Service Worker que no instala no solo deja de
 // cachear: tampoco recibe los push, que es lo que de verdad importa aqui.
-const SHELL = ['/', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png'];
+const SHELL = [
+  '/',
+  '/manifest.webmanifest',
+  '/icon-192.png',
+  '/icon-512.png',
+  // El badge se pinta con la app cerrada y puede tocar sin red: mejor tenerlo.
+  '/badge-96.png',
+];
 
 // Nada de lo que tenga que ver con la cache puede tumbar la instalacion: si
 // `waitUntil` recibe una promesa rechazada, el worker no llega a activarse, y
@@ -100,7 +107,11 @@ self.addEventListener('push', (event) => {
     tag: data.tag || 'bambu',
     renotify: true,
     icon: '/icon-192.png',
-    badge: '/icon-192.png',
+    // El badge de la barra de estado es una mascara: Android ignora el color y
+    // pinta la silueta que marque el canal alfa. Con el icono normal, opaco de
+    // borde a borde, salia un cuadrado gris macizo; este es el cubo recortado
+    // sobre transparente.
+    badge: '/badge-96.png',
     data: { url: data.url || '/' },
     vibrate: [90, 60, 90],
   };
