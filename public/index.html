@@ -4,9 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#080b10">
+<meta name="description" content="Estado en directo de la impresora Bambu Lab.">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Bambu Status">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Bambu A1 · Dashboard</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<title>Bambu Lab · Estado</title>
 <style>
 /* ==========================================================================
    Tokens
@@ -27,9 +33,11 @@
   --warn:#f5a524;
   --err:#ff5c5c;
   --ok:#00d492;
+  --cool:#3ec9ff;
 
   --r-lg:20px;
   --r-md:14px;
+  --r-sm:10px;
 
   --ease:cubic-bezier(.22,1,.36,1);
   --pad:clamp(12px,3vw,18px);
@@ -76,14 +84,14 @@ img{max-width:100%}
   background:var(--surface);color:var(--text);transition:border-color .2s,box-shadow .2s;
 }
 .gate input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px rgba(0,212,146,.13)}
-.gate .primary{
+.primary{
   width:100%;padding:13px;font-size:15px;font-weight:650;cursor:pointer;
   border-radius:var(--r-md);border:none;color:#04160f;
   background:linear-gradient(135deg,var(--accent),#00b8a9);
   transition:transform .15s var(--ease),filter .2s;
 }
-.gate .primary:hover{filter:brightness(1.08)}
-.gate .primary:active{transform:scale(.98)}
+.primary:hover{filter:brightness(1.08)}
+.primary:active{transform:scale(.98)}
 .msg{color:var(--err);font-size:13px;min-height:20px;margin-top:10px}
 .msg.shake{animation:shake .4s}
 
@@ -96,20 +104,17 @@ img{max-width:100%}
           calc(66px + env(safe-area-inset-bottom));
 }
 .stack{display:grid;gap:var(--gap)}
-/* stretch (y no start) para que dos tarjetas de la misma fila igualen altura:
-   con start, la mas corta dejaba un hueco muerto debajo. */
 .row{display:grid;gap:var(--gap);align-items:stretch;grid-template-columns:1fr}
-@media (min-width:780px){
-  .row{grid-template-columns:1fr 1fr}
-  .row.lead{grid-template-columns:minmax(0,.92fr) minmax(0,1.08fr)}
+@media (min-width:820px){
+  .row.lead{grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr)}
+  .row.has-cam{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
 }
-/* Columna con dos tarjetas apiladas que juntas igualan a la vecina. */
-.substack{display:grid;gap:var(--gap);grid-template-rows:auto 1fr}
 
 .stack>*{animation:fade-up .55s var(--ease) both}
 .stack>*:nth-child(1){animation-delay:.02s}
 .stack>*:nth-child(2){animation-delay:.08s}
 .stack>*:nth-child(3){animation-delay:.14s}
+.stack>*:nth-child(4){animation-delay:.2s}
 
 .card{
   background:linear-gradient(180deg,var(--surface),rgba(17,22,31,.75));
@@ -122,22 +127,40 @@ img{max-width:100%}
 }
 .card>h2 .tag{margin-left:auto;text-transform:none;letter-spacing:0;font-size:11px;
   color:var(--dim);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-/* El cuerpo ocupa el alto sobrante y reparte: sin esto quedaban huecos abajo. */
 .body{flex:1;display:flex;flex-direction:column;justify-content:space-evenly;gap:12px}
 
+/* ==========================================================================
+   Botones de icono (avisos / sincronizar / administracion)
+   ========================================================================== */
+.tools{display:flex;gap:8px;flex:none;margin-left:auto}
 .icon-btn{
-  width:34px;height:34px;display:grid;place-items:center;cursor:pointer;border-radius:10px;
-  border:1px solid var(--line);background:var(--surface-2);flex:none;
-  transition:border-color .2s,background .2s,transform .15s var(--ease);
+  width:38px;height:38px;display:grid;place-items:center;cursor:pointer;border-radius:11px;
+  border:1px solid var(--line);background:var(--surface-2);flex:none;position:relative;
+  transition:border-color .2s,background .2s,transform .15s var(--ease),box-shadow .3s;
 }
 .icon-btn:hover{border-color:var(--line-strong)}
 .icon-btn:active{transform:scale(.93)}
-.icon-btn svg{width:15px;height:15px;stroke:var(--dim);fill:none;stroke-width:1.9;
-  stroke-linecap:round;stroke-linejoin:round;transition:stroke .2s}
+.icon-btn svg{width:16px;height:16px;stroke:var(--dim);fill:none;stroke-width:1.9;
+  stroke-linecap:round;stroke-linejoin:round;transition:stroke .25s}
 .icon-btn:hover svg{stroke:var(--text)}
 .icon-btn.active{border-color:rgba(0,212,146,.4);background:rgba(0,212,146,.1)}
 .icon-btn.active svg{stroke:var(--accent)}
 .icon-btn.spin svg{animation:spin .7s linear}
+
+/* Sincronizacion: relleno solido verde si la web va al dia, rojo si no.
+   Es el unico boton que informa ademas de accionar, asi que se pinta entero. */
+#btn-sync{transition:background .45s var(--ease),border-color .45s,box-shadow .45s}
+#btn-sync.sync-ok{
+  background:linear-gradient(140deg,#00d492,#00b184);border-color:rgba(0,212,146,.65);
+  box-shadow:0 0 0 1px rgba(0,212,146,.25),0 3px 12px rgba(0,212,146,.28);
+}
+#btn-sync.sync-ok svg{stroke:#04160f}
+#btn-sync.sync-bad{
+  background:linear-gradient(140deg,#ff5c5c,#d43b3b);border-color:rgba(255,92,92,.65);
+  box-shadow:0 0 0 1px rgba(255,92,92,.25),0 3px 12px rgba(255,92,92,.3);
+  animation:pulse-bad 2.4s ease-in-out infinite;
+}
+#btn-sync.sync-bad svg{stroke:#fff}
 
 /* ==========================================================================
    Barra de estado inferior
@@ -174,52 +197,86 @@ img{max-width:100%}
   font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 
 /* ==========================================================================
-   PANEL PRINCIPAL — progreso + impresora
+   1. INFORMACION BASICA
    ========================================================================== */
-.hero{position:relative;overflow:hidden}
-.hero::after{
-  content:"";position:absolute;top:0;left:-40%;width:40%;height:100%;pointer-events:none;opacity:0;
-  background:linear-gradient(90deg,transparent,rgba(0,212,146,.05),transparent);
-}
-.hero.is-printing::after{animation:sweep 5.5s ease-in-out infinite;opacity:1}
-
-.hero-top{display:flex;align-items:center;gap:8px;margin-bottom:10px}
-.hero-id{min-width:0;flex:1}
-.hero-id h1{
-  font-size:clamp(15px,2.4vw,18px);font-weight:660;margin:0;letter-spacing:-.015em;
+.basic{flex-direction:row;align-items:center;gap:14px;padding:calc(var(--pad) - 2px) var(--pad)}
+.basic-id{min-width:0;flex:1}
+.basic-id h1{
+  font-size:clamp(16px,2.6vw,20px);font-weight:660;margin:0;letter-spacing:-.015em;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
-.hero-id .model{
-  display:inline-block;margin-top:3px;padding:2px 8px;border-radius:99px;
+.basic-id .model{
+  display:inline-block;margin-top:4px;padding:2px 9px;border-radius:99px;
   font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;
   color:var(--dim);background:var(--surface-2);border:1px solid var(--line);
 }
-.hero-ring{flex:1;display:grid;place-items:center;min-height:0}
+.basic-state{display:block;font-size:12px;color:var(--faint);margin-top:4px}
 
-.ring{position:relative;width:min(100%,clamp(150px,26vw,208px));aspect-ratio:1}
+/* Circulo de estado de impresion.
+   El patron de guiones suma justo la circunferencia (65.97 + 197.92 = 263.89):
+   con la suma anterior (240) el patron no cerraba la vuelta y en cada ciclo
+   aparecia un salto del segmento. Animar el offset una circunferencia entera
+   hace que el bucle sea continuo. */
+.orb{position:relative;width:clamp(54px,8vw,64px);aspect-ratio:1;flex:none;display:grid;
+  place-items:center}
+.orb svg.orb-svg{position:absolute;inset:0;width:100%;height:100%}
+.orb .otrack{stroke:rgba(255,255,255,.07)}
+.orb .oarc{
+  stroke:var(--faint);stroke-linecap:round;
+  stroke-dasharray:263.89;stroke-dashoffset:0;transition:stroke .4s;
+}
+.orb.run .oarc{stroke:var(--accent);stroke-dasharray:65.97 197.92;
+  animation:orbit 1.9s linear infinite}
+.orb.warn .oarc{stroke:var(--warn)}
+.orb.err  .oarc{stroke:var(--err);animation:blink 1.3s ease-in-out infinite}
+.orb.done .oarc{stroke:var(--accent)}
+.orb.cool .oarc{stroke:var(--cool);stroke-dasharray:65.97 197.92;
+  animation:orbit 3.4s linear infinite}
+.orb .oicon{display:grid;place-items:center;width:100%;height:100%}
+.orb .oicon svg{width:38%;height:38%;stroke:var(--faint);fill:none;stroke-width:1.9;
+  stroke-linecap:round;stroke-linejoin:round;transition:stroke .4s}
+.orb.run  .oicon svg{stroke:var(--accent)}
+.orb.warn .oicon svg{stroke:var(--warn)}
+.orb.err  .oicon svg{stroke:var(--err)}
+.orb.done .oicon svg{stroke:var(--accent)}
+.orb.cool .oicon svg{stroke:var(--cool)}
+
+/* ==========================================================================
+   2. ESTADO DE IMPRESION
+   ========================================================================== */
+.status-card{position:relative;overflow:hidden}
+.status-card::after{
+  content:"";position:absolute;top:0;left:-40%;width:40%;height:100%;pointer-events:none;opacity:0;
+  background:linear-gradient(90deg,transparent,rgba(0,212,146,.05),transparent);
+}
+.status-card.ph-printing::after{animation:sweep 5.5s ease-in-out infinite;opacity:1}
+
+.ring-wrap{display:grid;place-items:center;padding:2px 0 10px}
+.ring{position:relative;width:min(100%,clamp(158px,26vw,214px));aspect-ratio:1}
 .ring svg{width:100%;height:100%;display:block;overflow:visible}
 .ring .track{stroke:rgba(255,255,255,.06)}
-.ring .arc{stroke:url(#g-main);filter:drop-shadow(0 0 8px rgba(0,212,146,.45))}
-/* transform-box/origin obligatorios: en SVG el origen por defecto es el 0,0 del
-   lienzo y el scale del latido sacaria el punto fuera del arco. */
+.ring .arc{stroke:url(#g-main);filter:drop-shadow(0 0 8px rgba(0,212,146,.45));
+  transition:stroke .5s}
+.ph-cooling .ring .arc{stroke:url(#g-chill);filter:drop-shadow(0 0 8px rgba(110,150,255,.5))}
+.ph-ready   .ring .arc{stroke:url(#g-main);filter:drop-shadow(0 0 12px rgba(0,212,146,.6))}
+/* transform-box/origin obligatorios: en SVG el origen por defecto es el 0,0
+   del lienzo y el scale del latido sacaria el punto fuera del arco. */
 .ring .head{
   fill:#fff;filter:drop-shadow(0 0 5px rgba(255,255,255,.85));
   transform-box:fill-box;transform-origin:center;
 }
-.hero.is-printing .head{animation:throb 2s ease-in-out infinite}
+.ph-printing .head,.ph-cooling .head{animation:throb 2s ease-in-out infinite}
 .ring .readout{position:absolute;inset:0;display:flex;flex-direction:column;
-  align-items:center;justify-content:center;pointer-events:none}
-.ring .readout b{font-size:clamp(32px,6.5vw,48px);font-weight:660;line-height:1;
+  align-items:center;justify-content:center;pointer-events:none;text-align:center;padding:0 12%}
+.ring .readout b{font-size:clamp(34px,7vw,52px);font-weight:660;line-height:1;
   letter-spacing:-.035em}
-.ring .readout b i{font-size:.44em;font-style:normal;color:var(--dim);margin-left:2px}
-.ring .readout small{font-size:clamp(10px,1.4vw,11px);color:var(--faint);margin-top:6px;
+.ring .readout b i{font-size:.42em;font-style:normal;color:var(--dim);margin-left:2px}
+.ring .readout small{font-size:clamp(10px,1.5vw,11.5px);color:var(--faint);margin-top:7px;
   letter-spacing:.04em}
+.ph-ready .readout b{font-size:clamp(26px,5vw,36px);color:var(--accent)}
+.ph-ready .readout small{color:var(--dim)}
 
-/* ==========================================================================
-   Seguimiento
-   ========================================================================== */
-.track-top{display:flex;gap:12px;align-items:stretch}
-.track-tiles{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .tile{
   background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-md);
   padding:10px 12px;display:flex;flex-direction:column;justify-content:center;
@@ -232,63 +289,137 @@ img{max-width:100%}
 .tile .v{font-size:clamp(16px,2.8vw,21px);font-weight:650;letter-spacing:-.025em;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
-/* Estado: solo el icono dentro del anillo, sin texto. */
-.orb{position:relative;width:clamp(62px,9vw,76px);aspect-ratio:1;flex:none;display:grid;
-  place-items:center}
-.orb svg.orb-svg{position:absolute;inset:0;width:100%;height:100%}
-.orb .otrack{stroke:rgba(255,255,255,.07)}
-.orb .oarc{stroke:var(--dim);stroke-linecap:round;stroke-dasharray:40 200;transition:stroke .4s}
-.orb.run .oarc{stroke:var(--accent);animation:orbit 1.9s linear infinite}
-.orb.warn .oarc{stroke:var(--warn);stroke-dasharray:240}
-.orb.err .oarc{stroke:var(--err);stroke-dasharray:240;animation:blink 1.3s ease-in-out infinite}
-.orb.done .oarc{stroke:var(--accent);stroke-dasharray:240}
-.orb .oicon{display:grid;place-items:center;width:100%;height:100%}
-.orb .oicon svg{width:40%;height:40%;stroke:var(--dim);fill:none;stroke-width:1.9;
-  stroke-linecap:round;stroke-linejoin:round;transition:stroke .4s}
-.orb.run .oicon svg{stroke:var(--accent)}
-.orb.warn .oicon svg{stroke:var(--warn)}
-.orb.err .oicon svg{stroke:var(--err)}
-.orb.done .oicon svg{stroke:var(--accent)}
-
-.layers-head{display:flex;justify-content:space-between;align-items:baseline;
+.bar-head{display:flex;justify-content:space-between;align-items:baseline;
   font-size:11.5px;color:var(--faint);margin-bottom:6px;gap:10px}
-.layers-head b{color:var(--text);font-weight:650;font-size:14px}
+.bar-head b{color:var(--text);font-weight:650;font-size:14px}
 .track-bar{height:8px;border-radius:99px;background:rgba(255,255,255,.06);overflow:hidden}
 .track-bar .fill{height:100%;width:0;border-radius:99px;position:relative;
-  background:linear-gradient(90deg,var(--accent),var(--accent-2));transition:width 1s var(--ease)}
-.is-printing .track-bar .fill::after{
+  background:linear-gradient(90deg,var(--accent),var(--accent-2));
+  transition:width 1s var(--ease),background .5s}
+.ph-cooling .track-bar .fill{background:linear-gradient(90deg,var(--cool),#7f8cff)}
+.ph-printing .track-bar .fill::after,.ph-cooling .track-bar .fill::after{
   content:"";position:absolute;inset:0;border-radius:99px;background-size:200% 100%;
   background:linear-gradient(90deg,transparent,rgba(255,255,255,.45),transparent);
   animation:slide 1.8s linear infinite;
+}
+
+/* Trabajo en curso: portada + nombre del proyecto */
+.job-row{display:flex;gap:11px;align-items:center}
+.cover{
+  width:clamp(44px,7vw,54px);aspect-ratio:1;flex:none;border-radius:var(--r-sm);object-fit:cover;
+  background:var(--surface-2);border:1px solid var(--line);animation:fade-in .5s var(--ease) both;
+}
+.cover-ph{display:grid;place-items:center}
+.cover-ph svg{width:42%;height:42%;stroke:var(--faint);fill:none;stroke-width:1.6}
+.job-meta{min-width:0}
+.job-meta .k{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint)}
+.job{
+  font-size:clamp(13.5px,2vw,15.5px);font-weight:620;letter-spacing:-.01em;word-break:break-word;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
 }
 .stage-line{font-size:12px;color:var(--faint);white-space:nowrap;overflow:hidden;
   text-overflow:ellipsis}
 .stage-line b{color:var(--dim);font-weight:600}
 
-/* ==========================================================================
-   Trabajo
-   ========================================================================== */
-.job-grid{display:flex;gap:12px;align-items:center;flex:1}
-.cover{
-  width:clamp(56px,9vw,76px);aspect-ratio:1;flex:none;border-radius:var(--r-md);object-fit:cover;
-  background:var(--surface-2);border:1px solid var(--line);animation:fade-in .5s var(--ease) both;
+/* Aviso de retirada */
+.collect{
+  display:flex;gap:10px;align-items:center;padding:11px 13px;border-radius:var(--r-md);
+  background:rgba(0,212,146,.08);border:1px solid rgba(0,212,146,.3);
+  animation:fade-up .45s var(--ease) both;
 }
-.cover-ph{display:grid;place-items:center}
-.cover-ph svg{width:40%;height:40%;stroke:var(--faint);fill:none;stroke-width:1.6}
-.job{
-  font-size:clamp(13.5px,2vw,15.5px);font-weight:620;letter-spacing:-.01em;word-break:break-word;
-  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
+.collect svg{width:18px;height:18px;flex:none;stroke:var(--accent);fill:none;stroke-width:1.9;
+  stroke-linecap:round;stroke-linejoin:round}
+.collect span{flex:1;font-size:13px;color:var(--dim)}
+.collect button{
+  flex:none;padding:8px 13px;font-size:12.5px;font-weight:650;cursor:pointer;
+  border-radius:var(--r-sm);border:1px solid rgba(0,212,146,.4);
+  background:rgba(0,212,146,.14);color:var(--accent);
+  transition:background .2s,transform .15s var(--ease);
 }
+.collect button:hover{background:rgba(0,212,146,.24)}
+.collect button:active{transform:scale(.96)}
 
 /* ==========================================================================
-   Sensores
+   3. FILAMENTO
+   ========================================================================== */
+.fil{flex:1;display:flex;flex-direction:column;gap:14px;justify-content:center}
+
+.fil-hero{display:flex;gap:14px;align-items:center}
+/* Bobina protagonista: disco de color con el anillo de nivel alrededor. */
+.spool{position:relative;width:clamp(72px,12vw,92px);aspect-ratio:1;flex:none;display:grid;
+  place-items:center}
+.spool svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.spool .st{stroke:rgba(255,255,255,.07)}
+.spool .sa{stroke:var(--c,#39414f);stroke-linecap:round;
+  transition:stroke-dashoffset .9s var(--ease),stroke .5s}
+.spool .disc{
+  position:relative;width:60%;aspect-ratio:1;border-radius:50%;background:var(--c,#2a3140);
+  box-shadow:inset 0 0 0 3px rgba(255,255,255,.32),0 3px 14px rgba(0,0,0,.55);
+  transition:background .6s var(--ease);
+}
+.spool .disc::after{
+  content:"";position:absolute;inset:33%;border-radius:50%;background:var(--surface);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);
+}
+/* Alimentando: halo girando alrededor de la bobina en uso. */
+.spool::before{
+  content:"";position:absolute;inset:-4px;border-radius:50%;opacity:0;
+  background:conic-gradient(from 0deg,transparent 0 66%,rgba(0,212,146,.55) 86%,transparent 100%);
+  transition:opacity .4s;
+}
+.fil.is-feeding .spool::before{opacity:1;animation:spin 2.6s linear infinite}
+.fil.is-changing .spool .disc{animation:swap 1.4s var(--ease) infinite}
+
+.fil-info{min-width:0;flex:1}
+.fil-badge{
+  display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;
+  font-size:10px;font-weight:650;letter-spacing:.05em;text-transform:uppercase;
+  background:rgba(0,212,146,.12);color:var(--accent);border:1px solid rgba(0,212,146,.28);
+}
+.fil-badge.is-idle{background:var(--surface-2);color:var(--dim);border-color:var(--line)}
+.fil-badge.is-changing{background:rgba(245,165,36,.12);color:var(--warn);
+  border-color:rgba(245,165,36,.3)}
+.fil-badge.is-none{background:rgba(255,92,92,.1);color:var(--err);
+  border-color:rgba(255,92,92,.26)}
+.fil-badge i{width:6px;height:6px;border-radius:50%;background:currentColor;font-style:normal}
+.fil.is-changing .fil-badge i{animation:blink .9s ease-in-out infinite}
+
+.fil-mat{font-size:clamp(17px,3vw,22px);font-weight:660;letter-spacing:-.02em;margin-top:7px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fil-loc{font-size:12.5px;color:var(--dim);margin-top:2px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+.fil-remain{margin-top:9px}
+.fil-remain .track-bar{height:6px}
+.fil-remain .track-bar .fill{background:var(--c,var(--accent));transition:width .9s var(--ease)}
+.fil-remain .cap{display:flex;justify-content:space-between;font-size:10.5px;color:var(--faint);
+  margin-top:5px}
+
+/* Resto de bobinas: fila compacta, sin protagonismo. */
+.fil-strip{display:flex;gap:8px;flex-wrap:wrap}
+.fil-chip{
+  display:flex;align-items:center;gap:7px;padding:6px 10px 6px 7px;border-radius:99px;
+  background:var(--surface-2);border:1px solid var(--line);font-size:11.5px;color:var(--dim);
+  animation:fade-in .4s var(--ease) both;
+}
+.fil-chip .swatch{
+  width:14px;height:14px;border-radius:50%;flex:none;background:var(--c,#39414f);
+  box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.3);
+}
+.fil-chip b{color:var(--text);font-weight:600}
+.fil-chip .pc{color:var(--faint);font-variant-numeric:tabular-nums}
+.fil-strip-label{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);
+  margin-bottom:7px}
+
+/* ==========================================================================
+   4. SENSORES
    ========================================================================== */
 .gauges{display:grid;grid-template-columns:repeat(2,1fr);gap:var(--gap);flex:1;
   align-content:center}
-@media (min-width:1000px){ .gauges{grid-template-columns:repeat(4,1fr)} }
+@media (min-width:640px){ .gauges{grid-template-columns:repeat(4,1fr)} }
 .gauge{display:flex;flex-direction:column;align-items:center;gap:7px}
-.gauge .dial{position:relative;width:100%;max-width:clamp(70px,11vw,100px);aspect-ratio:1}
-.gauge svg{width:100%;height:100%;display:block}
+.gauge .dial{position:relative;width:100%;max-width:clamp(74px,11vw,104px);aspect-ratio:1;
+  border-radius:50%;transition:box-shadow .5s var(--ease)}
+.gauge svg{width:100%;height:100%;display:block;overflow:visible}
 .gauge .gt{stroke:rgba(255,255,255,.06)}
 .gauge .ga{stroke-linecap:round;transition:stroke .4s}
 .gauge.hot .ga{stroke:url(#g-hot)}
@@ -297,78 +428,47 @@ img{max-width:100%}
 .gauge .gval{
   position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;
   font-size:clamp(13px,2.2vw,18px);font-weight:650;letter-spacing:-.025em;
+  transition:color .4s;
 }
 .gauge .glabel{font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;
   text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 
-/* ==========================================================================
-   Filamento — carrusel circular
-   ========================================================================== */
-.fil{flex:1;display:grid;place-items:center}
-.fil-dial{position:relative;width:min(100%,300px);aspect-ratio:1}
-.fil-links{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
-.fil-links .orbit-track{fill:none;stroke:rgba(255,255,255,.05);stroke-width:1}
-.fil-links line{stroke:rgba(255,255,255,.09);stroke-width:1.5;stroke-linecap:round;
-  transition:stroke .4s}
-.fil-links line.live{stroke:var(--accent);stroke-dasharray:4 6;
-  animation:feed 1s linear infinite}
-
-/* Nucleo: la bobina en uso */
-.hub{
-  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-  width:38%;aspect-ratio:1;border-radius:50%;display:grid;place-items:center;
-  background:var(--c,#2a3140);
-  box-shadow:inset 0 0 0 3px rgba(255,255,255,.34), 0 4px 16px rgba(0,0,0,.55);
-  transition:background .6s var(--ease);
+/* A pleno rendimiento: el anillo cierra la vuelta y el dial se enciende.
+   Un aro exterior late hacia fuera para que el "lleno" se lea de un vistazo. */
+.gauge .halo{
+  position:absolute;inset:0;border-radius:50%;pointer-events:none;opacity:0;
+  border:2px solid var(--glow,var(--accent));transition:opacity .4s;
 }
-.hub::before{
-  content:"";position:absolute;inset:-5px;border-radius:50%;opacity:0;
-  background:conic-gradient(from 0deg,transparent 0 68%,rgba(255,255,255,.5) 84%,transparent 100%);
-  transition:opacity .4s;
-}
-.fil-dial.feeding .hub::before{opacity:1;animation:spin 3s linear infinite}
-.hub-core{
-  position:relative;width:64%;aspect-ratio:1;border-radius:50%;background:var(--surface);
-  box-shadow:inset 0 0 0 1px rgba(255,255,255,.14);
-  display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px;
-}
-.hub-mat{font-size:clamp(11px,2.4vw,14px);font-weight:650;letter-spacing:-.01em;
-  max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center}
-.hub-sub{font-size:clamp(8.5px,1.6vw,10px);color:var(--faint);white-space:nowrap;
-  overflow:hidden;text-overflow:ellipsis;max-width:100%}
-.hub.swap{animation:swap .8s var(--ease)}
-
-/* Bobinas del carrusel */
-.slot{
-  position:absolute;transform:translate(-50%,-50%);
-  width:23%;aspect-ratio:1;display:grid;place-items:center;
-  animation:pop .45s var(--ease) both;
-}
-.slot svg{position:absolute;inset:0;width:100%;height:100%}
-.slot .rt{fill:none;stroke:rgba(255,255,255,.07);stroke-width:5}
-.slot .ra{fill:none;stroke:var(--c,#555);stroke-width:5;stroke-linecap:round;
-  transition:stroke-dashoffset .8s var(--ease)}
-.slot .disc{
-  position:relative;width:56%;aspect-ratio:1;border-radius:50%;background:var(--c,#555);
-  box-shadow:inset 0 0 0 2px rgba(255,255,255,.36), 0 2px 8px rgba(0,0,0,.5);
-}
-.slot .disc::after{content:"";position:absolute;inset:32%;border-radius:50%;
-  background:var(--surface);box-shadow:inset 0 0 0 1px rgba(255,255,255,.14)}
-.slot .tag{
-  position:absolute;bottom:-16px;left:50%;transform:translateX(-50%);
-  font-size:10px;color:var(--faint);white-space:nowrap;
-}
-.slot.active{animation:pop .45s var(--ease) both, halo 2.2s ease-in-out infinite}
-.slot.dim{opacity:.55}
-.fil-empty{color:var(--faint);font-size:13px;text-align:center}
+.gauge.is-full .halo{opacity:1;animation:full-ring 1.9s var(--ease) infinite}
+.gauge.is-full .dial{box-shadow:0 0 22px -4px var(--glow,var(--accent))}
+.gauge.is-full .ga{filter:drop-shadow(0 0 6px var(--glow,var(--accent)))}
+.gauge.is-full .gval{color:var(--glow,var(--accent))}
+.gauge.hot{--glow:#ff7a3d}
+.gauge.cool{--glow:#3ec9ff}
+.gauge.speed{--glow:#9b8cff}
 
 /* ==========================================================================
-   Camara / actividad
+   5. ACTIVIDAD
    ========================================================================== */
-.cam{width:100%;display:block;border-radius:var(--r-md);background:var(--surface-2);
-  aspect-ratio:16/9;object-fit:cover;animation:fade-in .5s var(--ease)}
-.feed{list-style:none;margin:0;padding:0;flex:1;max-height:280px;overflow-y:auto;
-  overscroll-behavior:contain}
+.feed-wrap{flex:1;min-height:0;position:relative}
+.feed{
+  list-style:none;margin:0;padding:0 4px 0 0;
+  max-height:clamp(240px,42vh,360px);overflow-y:auto;overscroll-behavior:contain;
+  scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent;
+}
+.feed::-webkit-scrollbar{width:6px}
+.feed::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:99px}
+.feed::-webkit-scrollbar-track{background:transparent}
+/* Difuminado inferior: avisa de que la lista sigue por debajo del corte. */
+.feed-wrap::after{
+  content:"";position:absolute;left:0;right:0;bottom:0;height:26px;pointer-events:none;
+  background:linear-gradient(transparent,rgba(17,22,31,.92));border-radius:0 0 var(--r-md) 0;
+}
+.feed-day{
+  position:sticky;top:0;z-index:1;padding:7px 0 5px;font-size:10px;text-transform:uppercase;
+  letter-spacing:.07em;color:var(--faint);font-weight:650;
+  background:linear-gradient(var(--surface) 70%,rgba(17,22,31,.85));
+}
 .feed li{display:flex;gap:10px;align-items:baseline;padding:9px 0;
   border-bottom:1px solid var(--line);font-size:13.5px;animation:slide-in .4s var(--ease) both}
 .feed li:last-child{border-bottom:none}
@@ -377,20 +477,103 @@ img{max-width:100%}
 .feed .error{color:var(--err)}
 .feed .warning{color:var(--warn)}
 .feed .success{color:var(--ok)}
-
 .empty{color:var(--faint);font-size:13px;text-align:center;padding:18px 0}
 .feed li.empty{display:block;border-bottom:none}
 
 /* ==========================================================================
+   Camara
+   ========================================================================== */
+.cam{width:100%;display:block;border-radius:var(--r-md);background:var(--surface-2);
+  aspect-ratio:16/9;object-fit:cover;animation:fade-in .5s var(--ease)}
+
+/* ==========================================================================
+   Panel de administracion
+   ========================================================================== */
+.modal{
+  position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:20px;
+  background:rgba(4,6,10,.72);backdrop-filter:blur(8px);animation:fade-in .25s var(--ease);
+}
+.sheet{
+  width:min(100%,420px);max-height:86dvh;overflow-y:auto;overscroll-behavior:contain;
+  background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--r-lg);
+  padding:var(--pad);animation:fade-up .35s var(--ease) both;
+}
+.sheet-head{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.sheet-head h2{font-size:16px;margin:0;font-weight:660;letter-spacing:-.01em;flex:1}
+.sheet-head .close{
+  width:32px;height:32px;border-radius:9px;border:1px solid var(--line);background:var(--surface-2);
+  cursor:pointer;display:grid;place-items:center;flex:none;
+}
+.sheet-head .close svg{width:14px;height:14px;stroke:var(--dim);fill:none;stroke-width:2;
+  stroke-linecap:round}
+.sheet-head .close:hover svg{stroke:var(--text)}
+
+.section{border:1px solid var(--line);border-radius:var(--r-md);padding:13px;
+  margin-bottom:12px;background:var(--surface-2)}
+.section>h3{
+  font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--faint);
+  margin:0 0 11px;font-weight:650;
+}
+.section p.note{font-size:12px;color:var(--faint);margin:9px 0 0;line-height:1.5}
+
+.opt{display:flex;align-items:center;gap:12px;padding:9px 0}
+.opt+.opt{border-top:1px solid var(--line)}
+.opt .txt{flex:1;min-width:0}
+.opt .txt b{display:block;font-size:13.5px;font-weight:600}
+.opt .txt small{display:block;font-size:11.5px;color:var(--faint);margin-top:2px;line-height:1.4}
+.opt.sub{padding-left:14px;border-left:2px solid var(--line);margin-left:2px}
+.opt.sub .txt b{font-weight:500;font-size:13px}
+
+/* Interruptor */
+.sw{
+  --w:44px;width:var(--w);height:25px;border-radius:99px;flex:none;cursor:pointer;position:relative;
+  border:1px solid var(--line-strong);background:rgba(255,255,255,.06);
+  transition:background .25s,border-color .25s;
+}
+.sw::after{
+  content:"";position:absolute;top:2px;left:2px;width:19px;height:19px;border-radius:50%;
+  background:var(--dim);transition:transform .25s var(--ease),background .25s;
+}
+.sw[aria-checked="true"]{background:rgba(0,212,146,.28);border-color:rgba(0,212,146,.5)}
+.sw[aria-checked="true"]::after{transform:translateX(19px);background:var(--accent)}
+.sw[disabled]{opacity:.4;cursor:not-allowed}
+
+.btn-row{display:flex;gap:9px;flex-wrap:wrap}
+.btn{
+  flex:1;min-width:130px;padding:10px 13px;font-size:13px;font-weight:600;cursor:pointer;
+  border-radius:var(--r-sm);border:1px solid var(--line-strong);background:var(--surface);
+  color:var(--text);transition:background .2s,border-color .2s,transform .15s var(--ease);
+}
+.btn:hover{background:var(--surface-2);border-color:var(--dim)}
+.btn:active{transform:scale(.97)}
+.btn.danger{color:var(--err);border-color:rgba(255,92,92,.35);background:rgba(255,92,92,.08)}
+.btn.danger:hover{background:rgba(255,92,92,.16)}
+.sheet input{
+  width:100%;padding:12px 14px;font-size:16px;font-family:inherit;letter-spacing:.3em;
+  text-align:center;border-radius:var(--r-md);border:1px solid var(--line-strong);
+  background:var(--surface-2);color:var(--text);transition:border-color .2s,box-shadow .2s;
+}
+.sheet input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px rgba(0,212,146,.13)}
+.toast{
+  position:fixed;left:50%;bottom:calc(72px + env(safe-area-inset-bottom));transform:translateX(-50%);
+  z-index:80;padding:10px 16px;border-radius:99px;font-size:13px;max-width:calc(100% - 32px);
+  background:rgba(23,30,42,.96);border:1px solid var(--line-strong);
+  box-shadow:0 8px 28px rgba(0,0,0,.5);animation:fade-up .3s var(--ease) both;
+}
+.toast.err{border-color:rgba(255,92,92,.4);color:#ffb4b4}
+.toast.ok{border-color:rgba(0,212,146,.4);color:#8ff0d2}
+
+/* ==========================================================================
    Movil
    ========================================================================== */
-@media (max-width:780px){
-  .hero-ring{padding:2px 0}
-  .fil-dial{width:min(100%,270px)}
+@media (max-width:820px){
+  .basic{gap:11px}
 }
-@media (max-width:360px){
-  .track-tiles{grid-template-columns:1fr}
-  .track-top{flex-direction:column;align-items:center}
+/* Solo en pantallas muy estrechas se apilan: en un movil normal (390 px) las
+   dos casillas y la bobina junto a su ficha caben de sobra en horizontal. */
+@media (max-width:344px){
+  .tiles{grid-template-columns:1fr}
+  .fil-hero{flex-direction:column;align-items:flex-start;text-align:left}
 }
 
 /* ==========================================================================
@@ -399,26 +582,24 @@ img{max-width:100%}
 @keyframes fade-up{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 @keyframes fade-in{from{opacity:0}to{opacity:1}}
 @keyframes slide-in{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
-@keyframes pop{from{opacity:0;transform:translate(-50%,-50%) scale(.6)}
-               to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
 @keyframes ping{0%{transform:scale(1);opacity:.55}70%,100%{transform:scale(2.8);opacity:0}}
 @keyframes throb{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.86)}}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes slide{to{background-position:-200% 0}}
 @keyframes sweep{0%{left:-40%}55%,100%{left:140%}}
-@keyframes orbit{to{stroke-dashoffset:-240}}
-@keyframes feed{to{stroke-dashoffset:-20}}
-@keyframes halo{
-  0%,100%{filter:drop-shadow(0 0 0 rgba(0,212,146,0))}
-  50%{filter:drop-shadow(0 0 9px rgba(0,212,146,.55))}
+/* Una circunferencia entera por ciclo: el patron encaja consigo mismo y no
+   hay salto al reiniciar la animacion. */
+@keyframes orbit{to{stroke-dashoffset:-263.89}}
+@keyframes full-ring{
+  0%{transform:scale(1);opacity:.55}
+  70%,100%{transform:scale(1.22);opacity:0}
 }
-/* Cambio de bobina: el nucleo se voltea y vuelve con el color nuevo. */
+@keyframes pulse-bad{0%,100%{box-shadow:0 0 0 1px rgba(255,92,92,.25),0 3px 12px rgba(255,92,92,.3)}
+                     50%{box-shadow:0 0 0 1px rgba(255,92,92,.4),0 3px 20px rgba(255,92,92,.55)}}
 @keyframes swap{
-  0%{transform:translate(-50%,-50%) rotateY(0) scale(1)}
-  45%{transform:translate(-50%,-50%) rotateY(90deg) scale(.78)}
-  55%{transform:translate(-50%,-50%) rotateY(-90deg) scale(.78)}
-  100%{transform:translate(-50%,-50%) rotateY(0) scale(1)}
+  0%,100%{transform:rotateY(0) scale(1)}
+  50%{transform:rotateY(180deg) scale(.86)}
 }
 @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}
                  75%{transform:translateX(6px)}}
@@ -446,6 +627,11 @@ img{max-width:100%}
   <linearGradient id="g-speed" x1="0" y1="1" x2="1" y2="0">
     <stop offset="0%" stop-color="#9b8cff"/><stop offset="100%" stop-color="#3ec9ff"/>
   </linearGradient>
+  <!-- Enfriamiento: azul a violeta. Deliberadamente lejos del verde de la
+       impresion, para que las dos fases no se confundan de un vistazo. -->
+  <linearGradient id="g-chill" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0%" stop-color="#3ec9ff"/><stop offset="100%" stop-color="#7f8cff"/>
+  </linearGradient>
 </defs></svg>
 
 <!-- ======================= Puerta: contrasena ============================= -->
@@ -456,7 +642,7 @@ img{max-width:100%}
       <path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M3 7l9 5 9-5"/><path d="M12 12v10"/>
     </svg>
   </div>
-  <h1>Bambu A1 Dashboard</h1>
+  <h1>Bambu Lab · Estado</h1>
   <p>Introduce la contraseña de acceso</p>
   <input id="gate-pass" type="password" placeholder="Contraseña" autocomplete="current-password">
   <button id="gate-btn" class="primary">Entrar</button>
@@ -490,141 +676,167 @@ img{max-width:100%}
 
   <main class="stack">
 
+    <!-- ====== 1. INFORMACION BASICA ====== -->
+    <section class="card basic">
+      <div id="orb" class="orb" title="Estado">
+        <svg class="orb-svg" viewBox="0 0 100 100" aria-hidden="true">
+          <circle class="otrack" cx="50" cy="50" r="42" fill="none" stroke-width="6"/>
+          <circle class="oarc" cx="50" cy="50" r="42" fill="none" stroke-width="6"
+                  transform="rotate(-90 50 50)"/>
+        </svg>
+        <div class="oicon" id="orb-icon"></div>
+      </div>
+
+      <div class="basic-id">
+        <h1 id="printer-name">Bambu Lab</h1>
+        <span id="printer-model" class="model hidden"></span>
+        <span id="printer-state" class="basic-state">Conectando…</span>
+      </div>
+
+      <div class="tools">
+        <button id="btn-notify" class="icon-btn" title="Activar avisos" aria-label="Activar avisos">
+          <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+            <path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+        </button>
+        <button id="btn-sync" class="icon-btn" title="Sincronizar" aria-label="Sincronizar">
+          <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>
+        </button>
+        <button id="btn-admin" class="icon-btn" title="Administración" aria-label="Administración">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2v.2a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+        </button>
+      </div>
+    </section>
+
     <div class="row lead">
 
-      <!-- ====== PANEL PRINCIPAL: progreso + impresora ====== -->
-      <section id="hero" class="card hero">
-        <div class="hero-top">
-          <div class="hero-id">
-            <h1 id="printer-name">Bambu Lab</h1>
-            <span id="printer-model" class="model hidden"></span>
-          </div>
-          <button id="btn-notify" class="icon-btn" title="Activar avisos" aria-label="Activar avisos">
-            <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-              <path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
-          </button>
-          <button id="btn-sync" class="icon-btn" title="Sincronizar" aria-label="Sincronizar">
-            <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>
-          </button>
-        </div>
+      <!-- ====== 2. ESTADO DE IMPRESION ====== -->
+      <section id="status-card" class="card status-card ph-idle">
+        <h2>Estado de impresión <span class="tag" id="phase-tag"></span></h2>
+        <div class="body">
 
-        <div class="hero-ring">
-          <div class="ring">
-            <svg viewBox="0 0 140 140" aria-hidden="true">
-              <circle class="track" cx="70" cy="70" r="60" fill="none" stroke-width="9"/>
-              <g transform="rotate(-90 70 70)">
-                <circle id="arc" class="arc" cx="70" cy="70" r="60" fill="none" stroke-width="9"
-                        stroke-linecap="round" stroke-dasharray="376.99" stroke-dashoffset="376.99"/>
-                <!-- Arranca en las 3 porque el grupo padre ya aplica el -90. -->
-                <g id="head-g" transform="rotate(0 70 70)">
-                  <circle id="head" class="head" cx="130" cy="70" r="4.5" opacity="0"/>
+          <div class="ring-wrap">
+            <div class="ring">
+              <svg viewBox="0 0 140 140" aria-hidden="true">
+                <circle class="track" cx="70" cy="70" r="60" fill="none" stroke-width="9"/>
+                <g transform="rotate(-90 70 70)">
+                  <circle id="arc" class="arc" cx="70" cy="70" r="60" fill="none" stroke-width="9"
+                          stroke-linecap="round" stroke-dasharray="376.99" stroke-dashoffset="376.99"/>
+                  <!-- Arranca en las 3 porque el grupo padre ya aplica el -90. -->
+                  <g id="head-g" transform="rotate(0 70 70)">
+                    <circle id="head" class="head" cx="130" cy="70" r="4.5" opacity="0"/>
+                  </g>
                 </g>
-              </g>
-            </svg>
-            <div class="readout">
-              <b><span id="pct">—</span><i id="pct-sign" class="hidden">%</i></b>
-              <small id="ring-label">esperando datos</small>
+              </svg>
+              <div class="readout">
+                <b><span id="pct">—</span><i id="pct-sign" class="hidden">%</i></b>
+                <small id="ring-label">esperando datos</small>
+              </div>
             </div>
           </div>
-        </div>
-      </section>
 
-      <!-- ====== Columna: seguimiento + trabajo ====== -->
-      <div class="substack">
-
-        <section id="tracker" class="card">
-          <h2>Seguimiento</h2>
-          <div class="body">
-            <div class="track-top">
-              <div class="track-tiles">
-                <div class="tile">
-                  <div class="l">
-                    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-                    Restante
-                  </div>
-                  <div class="v tnum" id="m-remaining">—</div>
-                </div>
-                <div class="tile">
-                  <div class="l">
-                    <svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>
-                    Termina
-                  </div>
-                  <div class="v tnum" id="m-eta">—</div>
-                </div>
+          <div class="tiles">
+            <div class="tile">
+              <div class="l">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                <span id="tile1-label">Restante</span>
               </div>
-
-              <div id="orb" class="orb" title="Estado">
-                <svg class="orb-svg" viewBox="0 0 100 100" aria-hidden="true">
-                  <circle class="otrack" cx="50" cy="50" r="42" fill="none" stroke-width="6"/>
-                  <circle class="oarc" cx="50" cy="50" r="42" fill="none" stroke-width="6"
-                          transform="rotate(-90 50 50)"/>
-                </svg>
-                <div class="oicon" id="orb-icon"></div>
-              </div>
+              <div class="v tnum" id="tile1-value">—</div>
             </div>
-
-            <div>
-              <div class="layers-head">
-                <span>Capas</span>
-                <span><b id="layer-now">—</b> <span id="layer-total">/ —</span></span>
+            <div class="tile">
+              <div class="l">
+                <svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>
+                <span id="tile2-label">Termina</span>
               </div>
-              <div class="track-bar"><div id="layer-fill" class="fill"></div></div>
+              <div class="v tnum" id="tile2-value">—</div>
             </div>
-
-            <div class="stage-line hidden" id="stage-line">Etapa: <b id="stage-text"></b></div>
           </div>
-        </section>
 
-        <section class="card">
-          <h2>Trabajo</h2>
-          <div class="job-grid">
+          <div>
+            <div class="bar-head">
+              <span id="bar-label">Capas</span>
+              <span><b id="bar-now">—</b> <span id="bar-total">/ —</span></span>
+            </div>
+            <div class="track-bar"><div id="bar-fill" class="fill"></div></div>
+          </div>
+
+          <div id="collect" class="collect hidden">
+            <svg viewBox="0 0 24 24"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/>
+              <path d="M10 12h4"/></svg>
+            <span>La pieza ya está fría</span>
+            <button id="btn-collected" type="button">Ya la he retirado</button>
+          </div>
+
+          <div class="job-row">
             <img id="cover" class="cover hidden" alt="">
             <div id="cover-ph" class="cover cover-ph">
               <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M3 7l9 5 9-5"/><path d="M12 12v10"/>
               </svg>
             </div>
-            <div id="job" class="job">Sin trabajo activo</div>
+            <div class="job-meta">
+              <div class="k">Proyecto</div>
+              <div id="job" class="job">Sin trabajo activo</div>
+            </div>
           </div>
-        </section>
 
-      </div>
-    </div>
-
-    <div class="row">
-      <!-- ====== Sensores ====== -->
-      <section class="card">
-        <h2>Sensores</h2>
-        <div class="gauges" id="gauges"></div>
+          <div class="stage-line hidden" id="stage-line">Etapa: <b id="stage-text"></b></div>
+        </div>
       </section>
 
-      <!-- ====== Filamento ====== -->
+      <!-- ====== 3. FILAMENTO ====== -->
       <section class="card">
-        <h2>Filamento <span class="tag" id="ams-tag"></span></h2>
-        <div class="fil">
-          <div class="fil-dial" id="fil-dial">
-            <svg class="fil-links" id="fil-links" viewBox="0 0 100 100" aria-hidden="true">
-              <circle class="orbit-track" cx="50" cy="50" r="34"/>
-            </svg>
-            <div class="hub" id="hub">
-              <div class="hub-core">
-                <span class="hub-mat" id="hub-mat">—</span>
-                <span class="hub-sub" id="hub-sub">sin filamento</span>
+        <h2>Filamento <span class="tag" id="fil-tag"></span></h2>
+        <div class="fil" id="fil">
+
+          <div class="fil-hero">
+            <div class="spool" id="spool">
+              <svg viewBox="0 0 100 100" aria-hidden="true">
+                <circle class="st" cx="50" cy="50" r="43" fill="none" stroke-width="7"/>
+                <circle class="sa" id="spool-arc" cx="50" cy="50" r="43" fill="none" stroke-width="7"
+                        transform="rotate(-90 50 50)"
+                        stroke-dasharray="270.18" stroke-dashoffset="270.18"/>
+              </svg>
+              <span class="disc" id="spool-disc"></span>
+            </div>
+
+            <div class="fil-info">
+              <span class="fil-badge is-idle" id="fil-badge"><i></i><span id="fil-badge-text">sin datos</span></span>
+              <div class="fil-mat" id="fil-mat">—</div>
+              <div class="fil-loc" id="fil-loc">esperando a la impresora</div>
+              <div class="fil-remain hidden" id="fil-remain">
+                <div class="track-bar"><div class="fill" id="fil-remain-fill"></div></div>
+                <div class="cap"><span>Restante en la bobina</span><span id="fil-remain-pc">—</span></div>
               </div>
             </div>
           </div>
+
+          <div id="fil-others" class="hidden">
+            <div class="fil-strip-label">Otras bobinas</div>
+            <div class="fil-strip" id="fil-strip"></div>
+          </div>
+
         </div>
       </section>
     </div>
 
-    <div class="row">
+    <!-- ====== 4. SENSORES ====== -->
+    <section class="card">
+      <h2>Sensores</h2>
+      <div class="gauges" id="gauges"></div>
+    </section>
+
+    <!-- ====== Camara + 5. ACTIVIDAD ====== -->
+    <div class="row" id="row-bottom">
       <section class="card hidden" id="card-cam">
         <h2>Cámara <span class="tag" id="cam-age"></span></h2>
         <img id="cam" class="cam" alt="Cámara de la impresora">
       </section>
       <section class="card">
-        <h2>Actividad</h2>
-        <ul id="feed" class="feed"><li class="empty">Sin eventos todavía</li></ul>
+        <h2>Actividad <span class="tag" id="feed-tag"></span></h2>
+        <div class="feed-wrap">
+          <ul id="feed" class="feed"><li class="empty">Sin eventos todavía</li></ul>
+        </div>
       </section>
     </div>
 
@@ -640,6 +852,86 @@ img{max-width:100%}
   </span>
 </div>
 
+<!-- ======================= Panel de administracion ======================== -->
+<div id="admin" class="modal hidden">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h2 id="admin-title">Administración</h2>
+      <button class="close" id="admin-close" aria-label="Cerrar">
+        <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <!-- Bloqueado: pide el codigo -->
+    <div id="admin-lock">
+      <p style="color:var(--dim);font-size:13.5px;margin:0 0 14px">
+        Introduce el código de administración para continuar.
+      </p>
+      <input id="admin-code" type="password" inputmode="numeric" maxlength="12"
+             placeholder="••••" autocomplete="off">
+      <p id="admin-msg" class="msg"></p>
+      <button id="admin-unlock" class="primary">Desbloquear</button>
+    </div>
+
+    <!-- Desbloqueado -->
+    <div id="admin-panel" class="hidden">
+
+      <div class="section">
+        <h3>Notificaciones</h3>
+
+        <div class="opt">
+          <div class="txt">
+            <b>Enviar notificaciones</b>
+            <small>Interruptor general de los avisos de la aplicación.</small>
+          </div>
+          <button class="sw" id="sw-enabled" role="switch" aria-checked="false"
+                  aria-label="Enviar notificaciones"></button>
+        </div>
+
+        <div class="opt sub">
+          <div class="txt">
+            <b>La impresión se está enfriando</b>
+            <small>Al terminar, cuando arranca el periodo de enfriamiento.</small>
+          </div>
+          <button class="sw" id="sw-cooling" role="switch" aria-checked="false"
+                  aria-label="Aviso de enfriamiento"></button>
+        </div>
+
+        <div class="opt sub">
+          <div class="txt">
+            <b>La impresión puede retirarse</b>
+            <small>Cuando la cama ya se ha enfriado y la pieza se puede sacar.</small>
+          </div>
+          <button class="sw" id="sw-ready" role="switch" aria-checked="false"
+                  aria-label="Aviso de retirada"></button>
+        </div>
+
+        <p class="note" id="push-note"></p>
+        <div class="btn-row" style="margin-top:11px">
+          <button class="btn" id="btn-push-test">Enviar aviso de prueba</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>Cuenta de Bambu Lab</h3>
+        <p class="note" id="account-note" style="margin:0 0 11px"></p>
+        <div class="btn-row">
+          <button class="btn danger" id="btn-bambu-logout">Cerrar sesión</button>
+          <button class="btn" id="btn-bambu-login">Reconectar</button>
+        </div>
+        <p class="note">
+          Al cerrar sesión se corta la conexión con Bambu Cloud y se borra el token guardado.
+          Para volver a conectar hará falta el código que Bambu envía por email.
+        </p>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn" id="btn-dash-logout">Salir del dashboard</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 'use strict';
 
@@ -649,19 +941,25 @@ const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const RING_C = 2 * Math.PI * 60;
 const DIAL_R = 42;
 const DIAL_C = 2 * Math.PI * DIAL_R;
-const SLOT_R = 20;                 // radio del anillo de nivel de cada bobina
-const SLOT_C = 2 * Math.PI * SLOT_R;
-const ORBIT_R = 34;                // radio del carrusel, en unidades del viewBox
+const SPOOL_C = 2 * Math.PI * 43;
 
 // Notification no existe en contextos no seguros (http:// por IP de la LAN).
 const CAN_NOTIFY = typeof Notification !== 'undefined';
+const CAN_PUSH = 'serviceWorker' in navigator && 'PushManager' in window;
 
 let camTimer = null;
 let lastCameraAt = null;
 let gotFirstState = false;
-let activeFilamentKey = null;
-let filSignature = null;
-let filSlots = [];
+
+let lastState = null;      // ultimo estado normalizado
+let lastCycle = null;      // fase del ciclo (impresion / enfriamiento / retirada)
+let pushConfig = { supported: false, publicKey: null, devices: 0 };
+let settings = null;
+let swReg = null;
+
+let wsOpen = false;
+let lastDataAt = null;     // ultima vez que llego un estado de la impresora
+let cloudOk = false;
 
 // ===========================================================================
 // Animacion
@@ -700,7 +998,7 @@ function animate(key, to, apply, ms = 900) {
 }
 
 // ===========================================================================
-// Sensores
+// 4. Sensores
 // ===========================================================================
 
 /**
@@ -716,7 +1014,7 @@ const GAUGES = [
 
 function buildGauges() {
   $('gauges').innerHTML = GAUGES.map((g) => `
-    <div class="gauge ${g.tone}">
+    <div class="gauge ${g.tone}" id="g-${g.key}">
       <div class="dial">
         <svg viewBox="0 0 100 100" aria-hidden="true">
           <circle class="gt" cx="50" cy="50" r="${DIAL_R}" fill="none" stroke-width="7"/>
@@ -725,6 +1023,7 @@ function buildGauges() {
                   stroke-dasharray="${DIAL_C.toFixed(2)}"
                   stroke-dashoffset="${DIAL_C.toFixed(2)}"/>
         </svg>
+        <span class="halo"></span>
         <div class="gval tnum" id="gv-${g.key}">—</div>
       </div>
       <div class="glabel">${g.label}</div>
@@ -734,23 +1033,28 @@ function buildGauges() {
 function setGauge(def, value, target) {
   const val = $(`gv-${def.key}`);
   const arc = $(`ga-${def.key}`);
+  const box = $(`g-${def.key}`);
 
   if (value == null) {
     val.textContent = '—';
     anims.delete(`gauge-${def.key}`);
     arc.style.strokeDashoffset = String(DIAL_C);
+    box.classList.remove('is-full');
     return;
   }
   const scale = target || def.max;
   animate(`gauge-${def.key}`, value, (v) => {
     val.textContent = Math.round(v) + def.unit;
-    arc.style.strokeDashoffset =
-      String(DIAL_C * (1 - Math.max(0, Math.min(1, v / scale))));
+    const ratio = Math.max(0, Math.min(1, v / scale));
+    arc.style.strokeDashoffset = String(DIAL_C * (1 - ratio));
+    // Anillo cerrado = a pleno rendimiento. El 0.985 evita que el efecto
+    // parpadee por el medio grado que oscila la boquilla en su objetivo.
+    box.classList.toggle('is-full', ratio >= 0.985);
   });
 }
 
 // ===========================================================================
-// Estado (solo icono)
+// 1. Circulo de estado
 // ===========================================================================
 
 const ICONS = {
@@ -759,29 +1063,195 @@ const ICONS = {
   check: '<path d="M20 6 9 17l-5-5"/>',
   alert: '<path d="M12 8v5M12 17h.01"/><circle cx="12" cy="12" r="9"/>',
   idle: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  snow: '<path d="M12 2v20M4.9 6.5l14.2 11M19.1 6.5 4.9 17.5"/>',
+  box: '<path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/>',
 };
 
-function renderOrb(s) {
+function renderOrb(s, cycle) {
   let tone = '';
   let icon = ICONS.idle;
+  let label = s?.stateText || 'Sin datos';
 
-  if (s.hasErrors)              { tone = 'err';  icon = ICONS.alert; }
-  else if (s.state === 'PAUSE') { tone = 'warn'; icon = ICONS.pause; }
-  else if (s.printing)          { tone = 'run';  icon = ICONS.play; }
-  else if (s.state === 'FINISH'){ tone = 'done'; icon = ICONS.check; }
+  if (s?.hasErrors)                 { tone = 'err';  icon = ICONS.alert; label = 'Error'; }
+  else if (s?.state === 'PAUSE')    { tone = 'warn'; icon = ICONS.pause; label = 'En pausa'; }
+  else if (s?.printing)             { tone = 'run';  icon = ICONS.play;  label = 'Imprimiendo'; }
+  else if (cycle?.phase === 'cooling') { tone = 'cool'; icon = ICONS.snow; label = 'Enfriando'; }
+  else if (cycle?.phase === 'ready')   { tone = 'done'; icon = ICONS.box;  label = 'Lista para retirar'; }
+  else if (s?.state === 'FINISH')   { tone = 'done'; icon = ICONS.check; label = 'Terminada'; }
 
   const orb = $('orb');
   orb.className = 'orb' + (tone ? ' ' + tone : '');
-  // Sin texto: el estado se lee por icono y color. Queda en el title por
-  // accesibilidad y para quien pase el raton.
-  orb.title = s.stateText || 'Estado';
+  orb.title = label;
+  $('printer-state').textContent = label;
   $('orb-icon').innerHTML =
     `<svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">${icon}</svg>`;
 }
 
 // ===========================================================================
-// Filamento — carrusel circular
+// 2. Estado de impresion — tres fases
+//
+//   printing -> cooling -> ready
+//
+// El panel es el mismo en las tres; lo que cambia es que significan el anillo,
+// las dos casillas y la barra. Se resuelve todo en un unico sitio para que no
+// queden mezclas raras (por ejemplo, capas de la impresion anterior mientras
+// se enfria).
 // ===========================================================================
+
+function phaseOf(s, cycle) {
+  if (s?.printing || s?.state === 'PAUSE') return 'printing';
+  if (cycle?.phase === 'cooling' || cycle?.phase === 'ready') return cycle.phase;
+  return 'idle';
+}
+
+function renderStatusPanel() {
+  const s = lastState;
+  const cycle = lastCycle;
+  const phase = phaseOf(s, cycle);
+
+  // Solo se reescribe si cambia: durante el enfriamiento esto corre cada
+  // segundo y reasignar la clase reiniciaria el barrido de la tarjeta.
+  const card = $('status-card');
+  const cls = 'card status-card ph-' + phase;
+  if (card.className !== cls) card.className = cls;
+
+  const TAGS = {
+    printing: 'en curso',
+    cooling: 'enfriando',
+    ready: 'lista para retirar',
+    idle: 'en reposo',
+  };
+  $('phase-tag').textContent = TAGS[phase];
+  $('collect').classList.toggle('hidden', phase !== 'ready');
+
+  if (phase === 'cooling') return renderCooling(cycle, s);
+  if (phase === 'ready') return renderReady(cycle);
+  return renderPrinting(s);
+}
+
+function renderPrinting(s) {
+  const pct = s?.percent ?? null;
+  setRing(pct, s?.state === 'PAUSE' ? 'en pausa'
+    : s?.printing ? 'completado'
+    : s?.state === 'FINISH' ? 'terminada'
+    : (s?.stateText || '—'));
+
+  $('tile1-label').textContent = 'Restante';
+  $('tile1-value').textContent = s?.remainingText || '—';
+  $('tile2-label').textContent = 'Termina';
+  $('tile2-value').textContent = s?.etaEpochMs ? clockTime(s.etaEpochMs) : '—';
+
+  $('bar-label').textContent = 'Capas';
+  $('bar-now').textContent = s?.layer ?? '—';
+  $('bar-total').textContent = s?.totalLayers ? `/ ${s.totalLayers}` : '/ —';
+  $('bar-fill').style.width =
+    `${s?.totalLayers ? Math.min(100, (s.layer / s.totalLayers) * 100) : 0}%`;
+
+  $('job').textContent = s?.jobName || 'Sin trabajo activo';
+
+  // La etapa solo aporta cuando dice algo distinto del estado general.
+  const showStage = Boolean(s?.stage && s.stage !== s.stateText);
+  $('stage-line').classList.toggle('hidden', !showStage);
+  if (showStage) $('stage-text').textContent = s.stage;
+}
+
+function renderCooling(cycle, s) {
+  const left = Math.max(0, (cycle.coolEndsAt || 0) - Date.now());
+  const total = cycle.coolMs || 15 * 60_000;
+  const pct = Math.max(0, Math.min(100, ((total - left) / total) * 100));
+
+  setRing(pct, 'enfriando la cama');
+
+  $('tile1-label').textContent = 'Listo en';
+  $('tile1-value').textContent = countdown(left);
+  $('tile2-label').textContent = 'A las';
+  $('tile2-value').textContent = cycle.coolEndsAt ? clockTime(cycle.coolEndsAt) : '—';
+
+  // Durante el enfriamiento las capas ya no dicen nada: la barra pasa a
+  // representar la temperatura real de la cama, que es lo que se esta yendo.
+  const bed = s?.temps?.bed;
+  $('bar-label').textContent = 'Temperatura de la cama';
+  $('bar-now').textContent = bed != null ? `${Math.round(bed)}°` : '—';
+  $('bar-total').textContent = '';
+  $('bar-fill').style.width = `${pct}%`;
+
+  $('job').textContent = cycle.jobName || s?.jobName || 'Última impresión';
+  $('stage-line').classList.remove('hidden');
+  $('stage-text').textContent =
+    cycle.outcome === 'FAILED' ? 'La impresión falló, espera igualmente a que enfríe'
+                               : 'No retires la pieza hasta que la cama esté fría';
+}
+
+function renderReady(cycle) {
+  setRing(100, 'puedes retirarla', 'Lista');
+
+  $('tile1-label').textContent = 'Terminada';
+  $('tile1-value').textContent = cycle.finishedAt ? clockTime(cycle.finishedAt) : '—';
+  $('tile2-label').textContent = 'Enfriada';
+  $('tile2-value').textContent = cycle.coolEndsAt ? clockTime(cycle.coolEndsAt) : '—';
+
+  $('bar-label').textContent = 'Enfriamiento';
+  $('bar-now').textContent = 'Completado';
+  $('bar-total').textContent = '';
+  $('bar-fill').style.width = '100%';
+
+  $('job').textContent = cycle.jobName || 'Última impresión';
+  $('stage-line').classList.add('hidden');
+}
+
+/**
+ * Pinta el anillo grande. `text` sustituye al numero cuando la fase no se mide
+ * en porcentaje (la retirada, por ejemplo).
+ */
+function setRing(pct, label, text) {
+  $('ring-label').textContent = label;
+  $('pct-sign').classList.toggle('hidden', pct == null || Boolean(text));
+
+  if (text) {
+    $('pct').textContent = text;
+    animate('progress', pct ?? 0, (v) => {
+      $('arc').style.strokeDashoffset = String(RING_C * (1 - v / 100));
+      $('head').setAttribute('opacity', '0');
+    });
+    return;
+  }
+  if (pct == null) {
+    $('pct').textContent = '—';
+    $('head').setAttribute('opacity', '0');
+    $('arc').style.strokeDashoffset = String(RING_C);
+    anims.delete('progress');
+    return;
+  }
+  animate('progress', pct, (v) => {
+    $('pct').textContent = String(Math.round(v));
+    $('arc').style.strokeDashoffset = String(RING_C * (1 - v / 100));
+    $('head-g').setAttribute('transform', `rotate(${v * 3.6} 70 70)`);
+    $('head').setAttribute('opacity', v > 0.5 && v < 99.5 ? '1' : '0');
+  });
+}
+
+// El enfriamiento avanza por reloj, no por mensajes MQTT: el panel se refresca
+// solo mientras dura, y al llegar a cero pasa a "lista" sin esperar al servidor.
+setInterval(() => {
+  if (lastCycle?.phase !== 'cooling') return;
+  if (Date.now() >= (lastCycle.coolEndsAt || 0)) {
+    lastCycle = { ...lastCycle, phase: 'ready' };
+    renderOrb(lastState, lastCycle);
+  }
+  renderStatusPanel();
+}, 1000);
+
+$('btn-collected').onclick = async () => {
+  const r = await fetch('/api/cycle/collected', { method: 'POST' }).then((x) => x.json());
+  if (r.cycle) { lastCycle = r.cycle; renderOrb(lastState, lastCycle); renderStatusPanel(); }
+};
+
+// ===========================================================================
+// 3. Filamento
+// ===========================================================================
+
+/** Etapas en las que la impresora esta moviendo filamento, no imprimiendo. */
+const CHANGING_STAGES = new Set([13, 22, 25, 26, 29, 30]);
 
 function filamentItems(s) {
   const items = [];
@@ -790,10 +1260,10 @@ function filamentItems(s) {
       if (tray.empty) continue;
       items.push({
         key: `ams-${unit.id}-${tray.id}`,
-        label: tray.subBrand || tray.type || '?',
-        loc: `Bandeja ${tray.id + 1}`,
-        tag: `B${tray.id + 1}`,
-        color: tray.color || '#555',
+        label: tray.subBrand || tray.type || 'Filamento',
+        loc: `Bandeja ${tray.id + 1} · AMS`,
+        short: `B${tray.id + 1}`,
+        color: tray.color || '#39414f',
         remain: tray.remain,
         active: !s.usingExternalSpool && s.activeTray === tray.id,
       });
@@ -804,8 +1274,8 @@ function filamentItems(s) {
       key: 'ext',
       label: s.externalTray.type,
       loc: 'Bobina externa',
-      tag: 'EXT',
-      color: s.externalTray.color || '#555',
+      short: 'Externa',
+      color: s.externalTray.color || '#39414f',
       remain: s.externalTray.remain,
       active: Boolean(s.usingExternalSpool),
     });
@@ -813,108 +1283,80 @@ function filamentItems(s) {
   return items;
 }
 
-/** Reparte las bobinas por la circunferencia. Solo al cambiar el juego. */
-function buildSlots(items) {
-  const dial = $('fil-dial');
-  const links = $('fil-links');
-
-  dial.querySelectorAll('.slot').forEach((n) => n.remove());
-  links.querySelectorAll('line').forEach((n) => n.remove());
-  dial.querySelector('.fil-empty')?.remove();
-
-  if (!items.length) {
-    filSlots = [];
-    const msg = document.createElement('div');
-    msg.className = 'fil-empty';
-    msg.style.cssText = 'position:absolute;left:50%;bottom:2%;transform:translateX(-50%)';
-    msg.textContent = 'Sin datos de filamento';
-    dial.appendChild(msg);
-    return;
-  }
-
-  filSlots = items.map((item, idx) => {
-    const angle = (-90 + (idx * 360) / items.length) * (Math.PI / 180);
-    const x = 50 + Math.cos(angle) * ORBIT_R;
-    const y = 50 + Math.sin(angle) * ORBIT_R;
-
-    const el = document.createElement('div');
-    el.className = 'slot';
-    el.style.left = `${x}%`;
-    el.style.top = `${y}%`;
-    el.style.setProperty('--c', item.color);
-    el.style.animationDelay = `${idx * 60}ms`;
-    el.innerHTML = `
-      <svg viewBox="0 0 44 44" aria-hidden="true">
-        <circle class="rt" cx="22" cy="22" r="${SLOT_R}"/>
-        <circle class="ra" cx="22" cy="22" r="${SLOT_R}" transform="rotate(-90 22 22)"
-                stroke-dasharray="${SLOT_C.toFixed(2)}" stroke-dashoffset="${SLOT_C.toFixed(2)}"/>
-      </svg>
-      <span class="disc"></span>
-      <span class="tag">${escapeHtml(item.tag)}</span>`;
-    dial.appendChild(el);
-
-    // Radio hacia el nucleo; el de la bobina en uso "alimenta".
-    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    line.setAttribute('x1', x.toFixed(2)); line.setAttribute('y1', y.toFixed(2));
-    line.setAttribute('x2', '50'); line.setAttribute('y2', '50');
-    links.appendChild(line);
-
-    return { key: item.key, el, line, arc: el.querySelector('.ra') };
-  });
-}
-
 function renderFilament(s) {
+  const fil = $('fil');
+  if (!s) return;
+
   const items = filamentItems(s);
-
-  const humidity = s.ams?.[0]?.humidity;
-  $('ams-tag').textContent = humidity != null ? `humedad ${humidity}` : '';
-
-  // La firma deja fuera el % restante, que cambia de continuo: reconstruir el
-  // DOM en cada report reiniciaba las animaciones y las bobinas parpadeaban.
-  const sig = items.map((i) => `${i.key}|${i.color}|${i.label}|${i.tag}`).join('~');
-  if (sig !== filSignature) {
-    filSignature = sig;
-    buildSlots(items);
-  }
-
   const active = items.find((i) => i.active) || null;
-  $('fil-dial').classList.toggle('feeding', Boolean(active && s.printing));
+  const changing = Boolean(s.amsBusy || CHANGING_STAGES.has(s.stageCode));
+  const feeding = Boolean(active && s.printing && !changing);
 
-  for (const slot of filSlots) {
-    const item = items.find((i) => i.key === slot.key);
-    if (!item) continue;
-    slot.el.classList.toggle('active', item.active);
-    slot.el.classList.toggle('dim', !item.active);
-    slot.line.setAttribute('class', item.active && s.printing ? 'live' : '');
-    const known = item.remain != null && item.remain >= 0;
-    slot.arc.style.strokeDashoffset =
-      String(SLOT_C * (1 - (known ? item.remain / 100 : 0)));
-    slot.el.title = `${item.label} · ${item.loc}` + (known ? ` · ${item.remain}%` : '');
+  fil.classList.toggle('is-feeding', feeding);
+  fil.classList.toggle('is-changing', changing);
+  $('fil-tag').textContent = items.length
+    ? `${items.length} bobina${items.length > 1 ? 's' : ''}`
+    : '';
+
+  // --- Estado destacado ---
+  const badge = $('fil-badge');
+  let tone = 'is-idle';
+  let badgeText = 'ninguno en uso';
+  let mat = '—';
+  let loc = 'ninguna bobina seleccionada';
+  let color = '#39414f';
+  let remain = null;
+
+  if (changing) {
+    tone = 'is-changing';
+    badgeText = 'cambiando filamento';
+    mat = active ? active.label : 'Cambio en curso';
+    loc = 'la impresora está moviendo el filamento';
+    color = active?.color || '#f5a524';
+    remain = active?.remain ?? null;
+  } else if (active) {
+    tone = feeding ? '' : 'is-idle';
+    badgeText = feeding ? 'en uso · imprimiendo' : 'cargado';
+    mat = active.label;
+    loc = active.loc;
+    color = active.color;
+    remain = active.remain;
+  } else if (!items.length) {
+    tone = 'is-none';
+    badgeText = 'sin filamento';
+    mat = 'Ninguno insertado';
+    loc = 'inserta una bobina para imprimir';
   }
 
-  // Nucleo: la bobina en uso. Si cambia, se voltea para que se note.
-  const hub = $('hub');
-  const key = active?.key ?? null;
-  const changed = key !== activeFilamentKey && activeFilamentKey !== null;
-  activeFilamentKey = key;
+  badge.className = 'fil-badge' + (tone ? ' ' + tone : '');
+  $('fil-badge-text').textContent = badgeText;
+  $('fil-mat').textContent = mat;
+  $('fil-loc').textContent = loc;
 
-  const paint = () => {
-    hub.style.setProperty('--c', active?.color || '#2a3140');
-    $('hub-mat').textContent = active?.label || '—';
-    $('hub-sub').textContent = active
-      ? active.loc + (active.remain >= 0 ? ` · ${active.remain}%` : '')
-      : (items.length ? 'ninguna en uso' : 'sin filamento');
-  };
+  $('spool').style.setProperty('--c', color);
+  $('fil-remain').style.setProperty('--c', color);
 
-  if (changed && !REDUCED) {
-    hub.classList.remove('swap');
-    void hub.offsetWidth;              // reinicia la animacion
-    hub.classList.add('swap');
-    setTimeout(paint, 360);            // repinta a media vuelta
-    setTimeout(() => hub.classList.remove('swap'), 850);
-  } else {
-    paint();
+  const known = remain != null && remain >= 0;
+  $('spool-arc').style.strokeDashoffset =
+    String(SPOOL_C * (1 - (known ? remain / 100 : 0)));
+  $('fil-remain').classList.toggle('hidden', !known);
+  if (known) {
+    $('fil-remain-fill').style.width = `${remain}%`;
+    $('fil-remain-pc').textContent = `${remain}%`;
   }
+
+  // --- Resto de bobinas ---
+  const others = items.filter((i) => i !== active);
+  $('fil-others').classList.toggle('hidden', others.length === 0);
+  $('fil-strip').innerHTML = others
+    .map(
+      (i) => `<span class="fil-chip" style="--c:${escapeAttr(i.color)}" title="${escapeAttr(i.label)}">
+        <span class="swatch"></span><b>${escapeHtml(i.short)}</b>
+        <span>${escapeHtml(i.label)}</span>
+        ${i.remain >= 0 ? `<span class="pc">${i.remain}%</span>` : ''}
+      </span>`,
+    )
+    .join('');
 }
 
 // ===========================================================================
@@ -974,35 +1416,58 @@ function start() {
   connectWs();
   startCameraLoop();
   setInterval(paintCamAge, 1000);
+  setInterval(paintSync, 5000);
+  registerServiceWorker();
 
   if (!CAN_NOTIFY) $('btn-notify').classList.add('hidden');
-  else if (Notification.permission === 'granted') $('btn-notify').classList.add('active');
 }
 
 function connectWs() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   const ws = new WebSocket(`${proto}://${location.host}/ws`);
 
+  ws.onopen = () => { wsOpen = true; paintSync(); };
+
   ws.onmessage = (ev) => {
     const { type, payload } = JSON.parse(ev.data);
     if (type === 'snapshot') {
       renderStatus(payload.status, payload.connected);
       if (payload.printer) renderPrinter(payload.printer);
+      lastCycle = payload.cycle || null;
+      settings = payload.settings || null;
+      pushConfig = payload.push || pushConfig;
+      lastDataAt = payload.lastMessageAt || null;
       if (payload.state) renderState(payload.state);
+      else { renderOrb(null, lastCycle); renderStatusPanel(); }
       if (payload.task) renderTask(payload.task);
       if (payload.camera) lastCameraAt = payload.camera.at;
-      renderFeed(payload.notifications || []);
+      renderFeed(payload.notifications || [], payload.historyDays);
       handleLoginPending(payload.loginPending);
+      syncNotifyButton();
+      paintSync();
+      // La clave VAPID llega con el snapshot, normalmente despues de que el
+      // Service Worker ya se haya registrado: es aqui donde se puede renovar
+      // la suscripcion de un dispositivo que ya tenia permiso concedido.
+      if (CAN_NOTIFY && Notification.permission === 'granted') subscribePush();
     }
-    else if (type === 'state') renderState(payload);
+    else if (type === 'state') { lastDataAt = Date.now(); renderState(payload); paintSync(); }
     else if (type === 'status') renderStatus(payload);
     else if (type === 'printer') renderPrinter(payload);
     else if (type === 'task') renderTask(payload);
+    else if (type === 'cycle') {
+      lastCycle = payload;
+      renderOrb(lastState, lastCycle);
+      renderStatusPanel();
+    }
+    else if (type === 'settings') { settings = payload; paintSettings(); }
+    else if (type === 'bambu-logout') { lastState = null; lastDataAt = null; paintSync(); }
     else if (type === 'camera') { lastCameraAt = payload.at; refreshCamera(); }
     else if (type === 'notification') { pushFeed(payload); notifyBrowser(payload); }
   };
 
   ws.onclose = () => {
+    wsOpen = false;
+    paintSync();
     $('dot').classList.remove('on');
     $('conn').textContent = 'Desconectado del servidor, reintentando…';
     setTimeout(connectWs, 3000);
@@ -1025,8 +1490,10 @@ function handleLoginPending(pending) {
 
 function renderStatus(s, connected) {
   const on = connected ?? s.connected;
-  $('dot').classList.toggle('on', Boolean(on));
+  cloudOk = Boolean(on);
+  $('dot').classList.toggle('on', cloudOk);
   $('conn').textContent = s.detail || (on ? 'Conectado' : 'Desconectado');
+  paintSync();
 }
 
 function renderPrinter(p) {
@@ -1034,52 +1501,14 @@ function renderPrinter(p) {
   const model = $('printer-model');
   model.textContent = p.model || '';
   model.classList.toggle('hidden', !p.model);
-  document.title = `${p.name || 'Bambu A1'} · Dashboard`;
 }
 
 function renderState(s) {
   gotFirstState = true;
-  const printing = Boolean(s.printing);
-  $('hero').classList.toggle('is-printing', printing && !s.hasErrors);
-  $('tracker').classList.toggle('is-printing', printing && !s.hasErrors);
+  lastState = s;
 
-  // --- Anillo principal: numero, arco y cabeza en una sola animacion ---
-  const pct = s.percent;
-  $('pct-sign').classList.toggle('hidden', pct == null);
-  if (pct == null) {
-    $('pct').textContent = '—';
-    $('head').setAttribute('opacity', '0');
-    anims.delete('progress');
-  } else {
-    animate('progress', pct, (v) => {
-      $('pct').textContent = String(Math.round(v));
-      $('arc').style.strokeDashoffset = String(RING_C * (1 - v / 100));
-      $('head-g').setAttribute('transform', `rotate(${v * 3.6} 70 70)`);
-      $('head').setAttribute('opacity', v > 0.5 && v < 99.5 ? '1' : '0');
-    });
-  }
-  $('ring-label').textContent = printing ? 'completado'
-    : s.state === 'FINISH' ? 'terminada'
-    : s.state === 'PAUSE' ? 'en pausa'
-    : s.stateText || '—';
-
-  // --- Seguimiento ---
-  $('m-remaining').textContent = s.remainingText || '—';
-  $('m-eta').textContent = s.etaEpochMs ? clockTime(s.etaEpochMs) : '—';
-  renderOrb(s);
-
-  $('layer-now').textContent = s.layer ?? '—';
-  $('layer-total').textContent = s.totalLayers ? `/ ${s.totalLayers}` : '/ —';
-  $('layer-fill').style.width =
-    `${s.totalLayers ? Math.min(100, (s.layer / s.totalLayers) * 100) : 0}%`;
-
-  // La etapa solo aporta cuando dice algo distinto del estado general.
-  const showStage = Boolean(s.stage && s.stage !== s.stateText);
-  $('stage-line').classList.toggle('hidden', !showStage);
-  if (showStage) $('stage-text').textContent = s.stage;
-
-  // --- Trabajo ---
-  $('job').textContent = s.jobName || 'Sin trabajo activo';
+  renderOrb(s, lastCycle);
+  renderStatusPanel();
 
   // --- Sensores ---
   const t = s.temps || {};
@@ -1092,8 +1521,12 @@ function renderState(s) {
   renderHms(s);
   renderMeta(s);
 
-  document.title = printing && pct != null
-    ? `${pct}% · ${s.jobName || 'Bambu A1'}` : 'Bambu A1 · Dashboard';
+  const phase = phaseOf(s, lastCycle);
+  document.title =
+    phase === 'printing' && s.percent != null ? `${s.percent}% · ${s.jobName || 'Bambu Lab'}`
+    : phase === 'cooling' ? 'Enfriando · Bambu Lab'
+    : phase === 'ready' ? 'Lista para retirar · Bambu Lab'
+    : 'Bambu Lab · Estado';
 }
 
 function renderHms(s) {
@@ -1131,13 +1564,56 @@ function renderTask(t) {
 }
 
 // ===========================================================================
+// Estado de sincronizacion (boton verde / rojo)
+// ===========================================================================
+
+/**
+ * "Sincronizada" = hay WebSocket, la nube responde y el ultimo dato de la
+ * impresora es reciente. La impresora publica cada pocos segundos mientras
+ * imprime y al menos cada minuto en reposo (pushall periodico del servidor),
+ * asi que 3 minutos de silencio ya significan que lo que se ve es viejo.
+ */
+const STALE_MS = 3 * 60_000;
+
+function isSynced() {
+  if (!wsOpen || !cloudOk) return false;
+  if (!lastDataAt) return false;
+  return Date.now() - lastDataAt < STALE_MS;
+}
+
+function paintSync() {
+  const btn = $('btn-sync');
+  const ok = isSynced();
+  btn.classList.toggle('sync-ok', ok);
+  btn.classList.toggle('sync-bad', !ok);
+  btn.title = ok
+    ? 'Sincronizada · pulsa para forzar una actualización'
+    : !wsOpen ? 'Sin conexión con el servidor'
+    : !cloudOk ? 'Sin conexión con Bambu Cloud'
+    : 'Datos desactualizados · pulsa para sincronizar';
+}
+
+$('btn-sync').onclick = (ev) => {
+  const btn = ev.currentTarget;
+  btn.classList.add('spin');
+  setTimeout(() => btn.classList.remove('spin'), 700);
+  fetch('/api/resync', { method: 'POST' });
+};
+
+// ===========================================================================
 // Camara
 // ===========================================================================
 
 function refreshCamera() {
   const img = $('cam');
-  img.onerror = () => $('card-cam').classList.add('hidden');
-  img.onload = () => $('card-cam').classList.remove('hidden');
+  img.onerror = () => {
+    $('card-cam').classList.add('hidden');
+    $('row-bottom').classList.remove('has-cam');
+  };
+  img.onload = () => {
+    $('card-cam').classList.remove('hidden');
+    $('row-bottom').classList.add('has-cam');
+  };
   img.src = `/api/camera.jpg?t=${Date.now()}`;
 }
 
@@ -1154,58 +1630,301 @@ function paintCamAge() {
 }
 
 // ===========================================================================
-// Actividad + notificaciones
+// 5. Actividad
 // ===========================================================================
 
-function renderFeed(events) {
-  const feed = $('feed');
-  if (!events.length) { feed.innerHTML = '<li class="empty">Sin eventos todavía</li>'; return; }
-  feed.innerHTML = events.map(feedItem).join('');
+let feedEvents = [];
+
+function renderFeed(events, days) {
+  feedEvents = Array.isArray(events) ? events.slice() : [];
+  $('feed-tag').textContent = days ? `últimos ${days} días` : '';
+  paintFeed();
 }
 
 function pushFeed(e) {
-  const feed = $('feed');
-  if (feed.querySelector('.empty')) feed.innerHTML = '';
-  feed.insertAdjacentHTML('afterbegin', feedItem(e));
-  while (feed.children.length > 40) feed.lastElementChild.remove();
+  feedEvents.unshift(e);
+  paintFeed();
 }
 
-function feedItem(e) {
-  return `<li><time>${clockTime(e.at)}</time>
-    <span class="${escapeHtml(e.level || '')}">${escapeHtml(e.text)}</span></li>`;
+/**
+ * Con 15 dias de historial la lista cruza varios dias, asi que se agrupa por
+ * fecha con una cabecera pegajosa: al desplazarse siempre se sabe de que dia
+ * es lo que se esta leyendo.
+ */
+function paintFeed() {
+  const feed = $('feed');
+  if (!feedEvents.length) {
+    feed.innerHTML = '<li class="empty">Sin eventos todavía</li>';
+    return;
+  }
+  const out = [];
+  let currentDay = null;
+  for (const e of feedEvents) {
+    const day = dayKey(e.at);
+    if (day !== currentDay) {
+      currentDay = day;
+      out.push(`<li class="feed-day">${escapeHtml(dayLabel(e.at))}</li>`);
+    }
+    out.push(`<li><time>${clockTime(e.at)}</time>
+      <span class="${escapeAttr(e.level || '')}">${escapeHtml(e.text)}</span></li>`);
+  }
+  feed.innerHTML = out.join('');
+}
+
+function dayKey(ms) {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+function dayLabel(ms) {
+  const today = dayKey(Date.now());
+  const yesterday = dayKey(Date.now() - 86_400_000);
+  const key = dayKey(ms);
+  if (key === today) return 'Hoy';
+  if (key === yesterday) return 'Ayer';
+  return new Date(ms).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+// ===========================================================================
+// Notificaciones del dispositivo
+// ===========================================================================
+
+async function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  try {
+    swReg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+    await navigator.serviceWorker.ready;
+    // Si el permiso ya estaba dado, la suscripcion se renueva en silencio:
+    // el endpoint del push service caduca y hay que reenviarlo al servidor.
+    if (CAN_NOTIFY && Notification.permission === 'granted') await subscribePush();
+    syncNotifyButton();
+  } catch (err) {
+    console.warn('[sw] no se pudo registrar:', err.message);
+  }
+}
+
+function urlB64ToUint8(base64) {
+  const padded = (base64 + '='.repeat((4 - (base64.length % 4)) % 4))
+    .replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(padded);
+  return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+}
+
+async function subscribePush() {
+  if (!CAN_PUSH || !swReg || !pushConfig.supported || !pushConfig.publicKey) return false;
+  try {
+    const existing = await swReg.pushManager.getSubscription();
+    const sub = existing || (await swReg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlB64ToUint8(pushConfig.publicKey),
+    }));
+    await fetch('/api/push/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subscription: sub.toJSON() }),
+    });
+    return true;
+  } catch (err) {
+    console.warn('[push]', err.message);
+    return false;
+  }
+}
+
+function syncNotifyButton() {
+  const btn = $('btn-notify');
+  if (!CAN_NOTIFY) { btn.classList.add('hidden'); return; }
+  const granted = Notification.permission === 'granted';
+  btn.classList.toggle('active', granted);
+  btn.title = granted
+    ? 'Avisos activos en este dispositivo'
+    : Notification.permission === 'denied'
+      ? 'Avisos bloqueados en los ajustes del navegador'
+      : 'Activar avisos en este dispositivo';
 }
 
 $('btn-notify').onclick = async () => {
   if (!CAN_NOTIFY) return;
   const perm = await Notification.requestPermission();
-  const btn = $('btn-notify');
-  btn.classList.toggle('active', perm === 'granted');
-  btn.title = perm === 'granted' ? 'Avisos activos' : 'Avisos bloqueados';
+  syncNotifyButton();
+  if (perm !== 'granted') {
+    toast('Los avisos están bloqueados en los ajustes del navegador', 'err');
+    return;
+  }
+  const ok = await subscribePush();
+  toast(
+    ok ? 'Avisos activados en este dispositivo'
+       : 'Avisos activos solo con la web abierta',
+    ok ? 'ok' : 'err',
+  );
 };
 
+/** Aviso en pantalla cuando la pestana esta abierta. */
 function notifyBrowser(e) {
   if (!CAN_NOTIFY || Notification.permission !== 'granted' || e.silent) return;
-  new Notification('Bambu Lab A1', { body: e.text, tag: e.type });
+  if (document.visibilityState === 'visible') return; // ya lo esta viendo
+  // Con Service Worker el aviso lo muestra el, para que el clic reenfoque la
+  // PWA en vez de abrir una pestana suelta.
+  if (swReg) {
+    swReg.showNotification('Bambu Lab', { body: e.text, tag: e.type, icon: '/icon-192.png' });
+  } else {
+    new Notification('Bambu Lab', { body: e.text, tag: e.type });
+  }
 }
 
-$('btn-sync').onclick = (ev) => {
-  const btn = ev.currentTarget;
-  btn.classList.add('spin');
-  setTimeout(() => btn.classList.remove('spin'), 700);
-  fetch('/api/resync', { method: 'POST' });
+// ===========================================================================
+// Panel de administracion
+// ===========================================================================
+
+function openAdmin() {
+  $('admin').classList.remove('hidden');
+  fetch('/api/admin/status')
+    .then((r) => r.json())
+    .then((r) => (r.unlocked ? showAdminPanel() : showAdminLock()))
+    .catch(showAdminLock);
+}
+
+function showAdminLock() {
+  $('admin-lock').classList.remove('hidden');
+  $('admin-panel').classList.add('hidden');
+  $('admin-msg').textContent = '';
+  $('admin-code').value = '';
+  setTimeout(() => $('admin-code').focus(), 60);
+}
+
+async function showAdminPanel() {
+  $('admin-lock').classList.add('hidden');
+  $('admin-panel').classList.remove('hidden');
+  try {
+    const r = await fetch('/api/settings').then((x) => x.json());
+    settings = r.settings;
+    pushConfig = r.push || pushConfig;
+    const channels = Object.entries(r.channels || {}).filter(([, v]) => v).map(([k]) => k);
+    $('account-note').textContent = r.account
+      ? `Sesión iniciada como ${r.account}.`
+      : 'No hay ninguna cuenta configurada.';
+    $('push-note').textContent = pushConfig.supported
+      ? `Notificaciones push activas · ${pushConfig.devices} dispositivo(s) suscrito(s)` +
+        (channels.length ? ` · también por ${channels.join(', ')}` : '')
+      : 'Web Push no está configurado en el servidor (faltan las claves VAPID). ' +
+        'Los avisos solo llegarán con la web abierta.';
+  } catch { /* el panel sigue siendo usable con los ajustes que ya tengamos */ }
+  paintSettings();
+}
+
+function paintSettings() {
+  if (!settings) return;
+  setSwitch($('sw-enabled'), settings.enabled);
+  setSwitch($('sw-cooling'), settings.triggers?.cooling !== false);
+  setSwitch($('sw-ready'), settings.triggers?.ready !== false);
+  // Los disparadores individuales no pintan nada si el maestro esta apagado.
+  for (const id of ['sw-cooling', 'sw-ready']) $(id).disabled = !settings.enabled;
+}
+
+function setSwitch(el, on) {
+  el.setAttribute('aria-checked', on ? 'true' : 'false');
+}
+
+async function saveSettings(patch) {
+  const res = await fetch('/api/settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) { toast(j.error || 'No se pudo guardar', 'err'); return; }
+  settings = j.settings;
+  paintSettings();
+}
+
+$('btn-admin').onclick = openAdmin;
+$('admin-close').onclick = () => $('admin').classList.add('hidden');
+$('admin').onclick = (e) => { if (e.target === $('admin')) $('admin').classList.add('hidden'); };
+
+$('admin-unlock').onclick = async () => {
+  const res = await fetch('/api/admin/unlock', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code: $('admin-code').value }),
+  });
+  if (res.ok) showAdminPanel();
+  else failMsg($('admin-msg'), 'Código incorrecto');
+};
+$('admin-code').onkeydown = (e) => { if (e.key === 'Enter') $('admin-unlock').click(); };
+
+$('sw-enabled').onclick = () => saveSettings({ enabled: !settings?.enabled });
+$('sw-cooling').onclick = () => {
+  if (!settings?.enabled) return;
+  saveSettings({ triggers: { cooling: settings.triggers?.cooling === false } });
+};
+$('sw-ready').onclick = () => {
+  if (!settings?.enabled) return;
+  saveSettings({ triggers: { ready: settings.triggers?.ready === false } });
+};
+
+$('btn-push-test').onclick = async () => {
+  if (CAN_NOTIFY && Notification.permission !== 'granted') {
+    toast('Activa primero los avisos con la campana', 'err');
+    return;
+  }
+  const res = await fetch('/api/push/test', { method: 'POST' });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) { toast(j.error || 'No se pudo enviar', 'err'); return; }
+  toast(j.sent ? `Aviso enviado a ${j.sent} dispositivo(s)` : 'No hay dispositivos suscritos',
+        j.sent ? 'ok' : 'err');
+};
+
+$('btn-bambu-logout').onclick = async () => {
+  if (!confirm('¿Cerrar la sesión de Bambu Lab? Habrá que volver a verificar con el código del email.')) return;
+  const res = await fetch('/api/admin/bambu-logout', { method: 'POST' });
+  toast(res.ok ? 'Sesión de Bambu Lab cerrada' : 'No se pudo cerrar', res.ok ? 'ok' : 'err');
+  if (res.ok) $('admin').classList.add('hidden');
+};
+
+$('btn-bambu-login').onclick = async () => {
+  const res = await fetch('/api/admin/bambu-login', { method: 'POST' });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) { toast(j.error || 'No se pudo reconectar', 'err'); return; }
+  toast(j.loginPending ? 'Bambu ha enviado un código de verificación' : 'Reconectando…', 'ok');
+  $('admin').classList.add('hidden');
+};
+
+$('btn-dash-logout').onclick = async () => {
+  await fetch('/api/logout', { method: 'POST' });
+  location.reload();
 };
 
 // ===========================================================================
 // Utilidades
 // ===========================================================================
 
+let toastTimer = null;
+function toast(text, tone = '') {
+  document.querySelector('.toast')?.remove();
+  const el = document.createElement('div');
+  el.className = 'toast' + (tone ? ' ' + tone : '');
+  el.textContent = text;
+  document.body.appendChild(el);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.remove(), 3800);
+}
+
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
+const escapeAttr = escapeHtml;
 
 function clockTime(ms) {
   return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+/** mm:ss mientras queda poco, y "12m" cuando aun falta bastante. */
+function countdown(ms) {
+  const total = Math.max(0, Math.round(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  if (m >= 2) return `${m}m`;
+  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 checkSession();

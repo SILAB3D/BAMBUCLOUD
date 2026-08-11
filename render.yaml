@@ -1,11 +1,21 @@
 # Blueprint de Render (https://render.com/docs/blueprint-spec).
 #
-# El plan gratuito no admite disco persistente, asi que el accessToken no
-# sobrevive a un reinicio. Por eso se inyecta como BAMBU_TOKEN: con el, el
-# servidor se salta el login y nunca vuelve a pedir el codigo del email.
-#
 # BAMBU_PASSWORD no se pone a proposito: con el token no hace falta, y asi la
 # contrasena de la cuenta de Bambu no vive en el servidor.
+#
+# ---------------------------------------------------------------------------
+# Sobre el disco persistente
+#
+# En el plan `free` NO hay disco: cada reinicio se lleva por delante el token,
+# el historial de actividad, los ajustes de avisos y las suscripciones push.
+# El dashboard sigue funcionando (el navegador se resuscribe solo cada vez que
+# alguien abre la web, y BAMBU_TOKEN evita tener que repetir el codigo del
+# email), pero si el servicio se reinicia mientras nadie mira, los avisos al
+# movil no llegan hasta la siguiente visita.
+#
+# Para que todo persista de verdad: plan `starter` y descomentar el bloque
+# `disk` de abajo.
+# ---------------------------------------------------------------------------
 services:
   - type: web
     name: bambu-dashboard
@@ -13,6 +23,12 @@ services:
     plan: free
     region: frankfurt
     healthCheckPath: /api/health
+
+    # disk:
+    #   name: bambu-data
+    #   mountPath: /data
+    #   sizeGB: 1
+
     envVars:
       - key: NODE_ENV
         value: production
@@ -27,3 +43,14 @@ services:
         sync: false
       - key: SESSION_SECRET
         generateValue: true
+      # Codigo del panel de administracion.
+      - key: ADMIN_CODE
+        sync: false
+      # Claves de Web Push. Generalas una vez con:
+      #   node -e "console.log(require('web-push').generateVAPIDKeys())"
+      # y pega el mismo par cada vez: si cambian, los moviles ya suscritos
+      # dejan de recibir avisos sin decir nada.
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
