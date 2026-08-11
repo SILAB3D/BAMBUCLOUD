@@ -10,9 +10,6 @@
 <meta name="apple-mobile-web-app-title" content="Bambu Status">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="/manifest.webmanifest">
-<!-- El SVG manda donde se soporta (nitido a cualquier tamano); el PNG es el
-     recambio para los navegadores que aun no lo aceptan como favicon. -->
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="/icon-192.png" sizes="192x192" type="image/png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <title>Bambu Lab · Estado</title>
@@ -268,17 +265,6 @@ img{max-width:100%}
   font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;
   color:var(--dim);background:var(--surface-2);border:1px solid var(--line);
 }
-/* Firmware, wifi y hora del ultimo dato. Vivian en la barra inferior; sin ella
-   se quedan aqui, que es donde esta el resto de la identidad de la maquina.
-   En una sola linea: si se envuelve, la tarjeta crece y el circulo de estado
-   deja de estar centrado con el nombre. Lo que no cabe se recorta. */
-.basic-meta{
-  display:flex;gap:10px;margin-top:5px;
-  font-size:11.5px;color:var(--faint);line-height:1.3;
-  white-space:nowrap;overflow:hidden;
-}
-.basic-meta span{overflow:hidden;text-overflow:ellipsis}
-.basic-meta span:empty{display:none}
 
 /* Circulo de estado de impresion.
    El patron de guiones suma justo la circunferencia (65.97 + 197.92 = 263.89):
@@ -817,9 +803,6 @@ img{max-width:100%}
       <div class="basic-id">
         <h1 id="printer-name">Bambu Lab</h1>
         <span id="printer-model" class="model hidden"></span>
-        <div class="basic-meta">
-          <span id="meta-fw"></span><span id="meta-wifi"></span><span id="meta-updated"></span>
-        </div>
       </div>
 
       <div class="tools">
@@ -1851,7 +1834,6 @@ function renderState(s) {
 
   renderFilament(s);
   renderHms(s);
-  renderMeta(s);
 
   const phase = phaseOf(s, lastCycle);
   document.title =
@@ -1876,12 +1858,6 @@ function renderHms(s) {
   $('hms-body').innerHTML =
     parts.join('') + '<br>Busca el código en la web de soporte de Bambu Lab.';
   banner.classList.remove('hidden');
-}
-
-function renderMeta(s) {
-  $('meta-fw').textContent = s.firmware ? `fw ${s.firmware}` : '';
-  $('meta-wifi').textContent = s.wifiSignal || '';
-  $('meta-updated').textContent = s.updatedAt ? clockTime(s.updatedAt) : '';
 }
 
 function renderTask(t) {

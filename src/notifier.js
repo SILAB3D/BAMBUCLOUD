@@ -55,9 +55,17 @@ export const TRIGGERS = [
   },
 ];
 
+/**
+ * Lo unico que se avisa sin que nadie lo pida: las dos etapas que ocurren
+ * cuando ya no hay nadie mirando la pantalla. El resto (inicio, pausa, HMS...)
+ * pasa delante de quien esta al pie de la maquina, asi que llega apagado y se
+ * enciende desde el panel de administracion.
+ */
+const ON_BY_DEFAULT = new Set(['cooling', 'ready']);
+
 export const DEFAULT_SETTINGS = {
   enabled: true,
-  triggers: Object.fromEntries(TRIGGERS.map((t) => [t.key, true])),
+  triggers: Object.fromEntries(TRIGGERS.map((t) => [t.key, ON_BY_DEFAULT.has(t.key)])),
 };
 
 export class Notifier extends EventEmitter {

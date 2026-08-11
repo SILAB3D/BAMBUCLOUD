@@ -196,6 +196,9 @@ El desbloqueo dura una hora: la sesión del dashboard no caduca, pero el panel s
   retirar, en pausa, reanudada, fallida, atención requerida, errores HMS e hitos de progreso.
   El catálogo se define en `TRIGGERS` (`src/notifier.js`) y la interfaz se genera desde ahí:
   añadir un tipo allí basta para que aparezca su interruptor.
+  De serie solo vienen encendidos **enfriándose** y **lista para retirar**, que son los dos
+  que ocurren cuando ya nadie mira la pantalla; el resto se enciende aquí. Una vez tocas
+  cualquier interruptor, tu elección manda sobre estos valores por defecto.
 - **Enviar aviso de prueba**: suscribe este dispositivo si hacía falta y manda un push real.
   Si algo falla, dice exactamente qué (permiso, claves del servidor, Service Worker…).
 - **Cerrar sesión** de Bambu Lab: corta el MQTT y borra el token guardado. Para reconectar
