@@ -24,6 +24,7 @@ import { BambuCloud } from './bambu-cloud.js';
 import { normalize } from './normalize.js';
 import { Notifier, HISTORY_DAYS, TRIGGERS } from './notifier.js';
 import { Store } from './store.js';
+import { JsonSessionStore } from './session-store.js';
 import { PushHub } from './push.js';
 import { JobCycle } from './job-cycle.js';
 
@@ -51,7 +52,31 @@ const store = new Store(STATE_FILE, {
   settings: null,
   pushSubs: [],
   cycle: null,
+  sessions: {},
+  sessionSecret: null,
 });
+
+// La sesion del dashboard dura hasta que se pulsa "Salir": diez años de cookie
+// y `rolling` para que cada visita la renueve. El limite real lo pone el
+// almacen, no el reloj.
+const SESSION_MAX_AGE = 10 * 365 * 24 * 60 * 60 * 1000;
+
+/**
+ * Un secreto aleatorio nuevo en cada arranque invalida todas las cookies
+ * firmadas con el anterior, asi que el "no se cierra la sesion" se rompia en
+ * cada redespliegue. Si no viene por entorno se genera uno y se guarda con el
+ * resto del estado.
+ */
+function sessionSecret() {
+  if (process.env.SESSION_SECRET) return process.env.SESSION_SECRET;
+  let saved = store.get('sessionSecret');
+  if (!saved) {
+    saved = crypto.randomBytes(32).toString('hex');
+    store.set('sessionSecret', saved);
+    store.flush();
+  }
+  return saved;
+}
 
 const push = new PushHub({
   publicKey: process.env.VAPID_PUBLIC_KEY,
@@ -432,11 +457,16 @@ app.set('trust proxy', 1);
 app.use(express.json({ limit: '12mb' }));
 app.use(
   session({
-    secret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
+    name: 'bambu.sid',
+    secret: sessionSecret(),
+    store: new JsonSessionStore(store),
     resave: false,
     saveUninitialized: false,
+    // Cada peticion reestrena la cookie: un movil que abre la PWA una vez por
+    // semana no llega a caducar nunca.
+    rolling: true,
     cookie: {
-      maxAge: 30 * 24 * 60 * 60 * 1000,
+      maxAge: SESSION_MAX_AGE,
       httpOnly: true,
       sameSite: 'lax',
       secure: process.env.NODE_ENV === 'production' && process.env.TRUST_HTTPS !== 'false',
@@ -465,8 +495,12 @@ app.post('/api/login', (req, res) => {
   return res.status(401).json({ error: 'Password incorrecta' });
 });
 
+// La unica forma de cerrar la sesion: sin esto se queda abierta indefinidamente.
 app.post('/api/logout', (req, res) => {
-  req.session.destroy(() => res.json({ ok: true }));
+  req.session.destroy(() => {
+    res.clearCookie('bambu.sid');
+    res.json({ ok: true });
+  });
 });
 
 app.get('/api/session', (req, res) => {
@@ -538,7 +572,7 @@ app.get('/api/cycle', requireAuth, (req, res) => res.json(jobCycle.toJSON()));
 
 /** "Ya la he retirado": cierra el ciclo y devuelve el panel a reposo. */
 app.post('/api/cycle/collected', requireAuth, (req, res) => {
-  jobCycle.clear();
+  jobCycle.clear({ collected: true });
   res.json({ ok: true, cycle: jobCycle.toJSON() });
 });
 
@@ -584,10 +618,20 @@ app.post('/api/push/test', requireAuth, requireAdmin, async (req, res) => {
 // El codigo es una barrera de conveniencia sobre una sesion ya autenticada,
 // no un segundo factor: evita tocar por accidente los ajustes desde un movil
 // desbloqueado, nada mas.
+//
+// Por eso el desbloqueo caduca solo aunque la sesion no lo haga: la sesion
+// dura hasta que se pulsa "Salir", y dejar el panel abierto para siempre
+// vaciaria de sentido la barrera.
 // ---------------------------------------------------------------------------
 
+const ADMIN_TTL = 60 * 60_000;
+
+function adminUnlocked(req) {
+  return Number(req.session?.adminUntil) > Date.now();
+}
+
 function requireAdmin(req, res, next) {
-  if (req.session?.admin) return next();
+  if (adminUnlocked(req)) return next();
   return res.status(403).json({ error: 'Panel de administración bloqueado' });
 }
 
@@ -601,17 +645,17 @@ app.post('/api/admin/unlock', requireAuth, (req, res) => {
   if (!sameCode(req.body?.code || '')) {
     return res.status(401).json({ error: 'Código incorrecto' });
   }
-  req.session.admin = true;
+  req.session.adminUntil = Date.now() + ADMIN_TTL;
   res.json({ ok: true });
 });
 
 app.post('/api/admin/lock', requireAuth, (req, res) => {
-  if (req.session) req.session.admin = false;
+  if (req.session) req.session.adminUntil = 0;
   res.json({ ok: true });
 });
 
 app.get('/api/admin/status', requireAuth, (req, res) => {
-  res.json({ unlocked: Boolean(req.session?.admin) });
+  res.json({ unlocked: adminUnlocked(req) });
 });
 
 app.get('/api/settings', requireAuth, (req, res) => {

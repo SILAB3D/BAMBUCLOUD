@@ -212,8 +212,14 @@ El panel de administración diagnostica las tres capas por separado:
 ### Ventana de bienvenida
 
 La primera vez explica cómo instalar la app y cómo permitir los avisos. Aparece como mucho
-**3 veces y nunca dos veces el mismo día**, y deja de salir en cuanto la app está instalada.
-El recuento vive en `localStorage`, así que es por dispositivo.
+**3 veces y nunca dos veces el mismo día**. El recuento vive en `localStorage`, así que es
+por dispositivo.
+
+Con la app ya instalada no vuelve a salir sola, salvo que aún falten los permisos de aviso:
+en ese caso se abre solo con ese apartado, que es lo único que queda por hacer.
+
+Se puede abrir cuando se quiera desde **Administración → Ver guía de instalación**, sin
+importar cuántas veces se haya visto ni si se descartó.
 
 ### Otros canales
 

@@ -203,25 +203,6 @@ img{max-width:100%}
 #btn-sync.sync-bad svg{stroke:#fff}
 
 /* ==========================================================================
-   Barra de estado inferior
-   ========================================================================== */
-.statusbar{
-  position:fixed;left:0;right:0;bottom:0;z-index:25;display:flex;align-items:center;gap:10px;
-  padding:9px var(--pad) calc(9px + env(safe-area-inset-bottom));
-  font-size:12px;color:var(--dim);
-  background:rgba(8,11,16,.82);backdrop-filter:blur(14px);border-top:1px solid var(--line);
-}
-.statusbar .detail{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.statusbar .meta{display:flex;gap:14px;flex:none;color:var(--faint);font-size:11.5px}
-@media (max-width:700px){ .statusbar .meta{display:none} }
-
-.dot{width:9px;height:9px;border-radius:50%;flex:none;position:relative;
-  background:var(--err);transition:background .3s}
-.dot::after{content:"";position:absolute;inset:0;border-radius:50%;background:inherit;opacity:.55}
-.dot.on{background:var(--ok)}
-.dot.on::after{animation:ping 2s var(--ease) infinite}
-
-/* ==========================================================================
    Banner HMS
    ========================================================================== */
 .banner{
@@ -1011,6 +992,7 @@ img{max-width:100%}
         <p class="note" id="push-note"></p>
         <div class="btn-row" style="margin-top:11px">
           <button class="btn" id="btn-push-test">Enviar aviso de prueba</button>
+          <button class="btn" id="btn-guide">Ver guía de instalación</button>
         </div>
       </div>
 
@@ -2153,20 +2135,39 @@ addEventListener('appinstalled', () => {
   $('onboard').classList.add('hidden');
 });
 
+/**
+ * Abre la guia. Con `manual` se salta todas las condiciones: es la que usa el
+ * boton del panel de administracion, que debe funcionar siempre.
+ */
+function showOnboarding({ manual = false } = {}) {
+  // Cada plataforma ve solo sus pasos, para no convertir la ayuda en un muro
+  // de texto. En escritorio se muestran los dos.
+  $('steps-android').classList.toggle('hidden', IS_IOS);
+  $('steps-ios').classList.toggle('hidden', IS_ANDROID);
+  // Ya instalada no hay nada que explicar sobre instalar.
+  $('onboard-install').classList.toggle('hidden', IS_STANDALONE);
+
+  paintOnboardNotify();
+  $('onboard').classList.remove('hidden');
+  if (!manual) saveOnboard({ count: onboardState().count + 1, last: Date.now() });
+}
+
 function maybeShowOnboarding() {
-  if (IS_STANDALONE) { saveOnboard({ done: true }); return; }  // ya instalada
   const st = onboardState();
   if (st.done || st.count >= ONBOARD_MAX) return;
   if (Date.now() - st.last < ONBOARD_GAP_MS) return;
 
-  // Cada plataforma ve primero sus pasos; los de la otra se ocultan para no
-  // convertir la ayuda en un muro de texto.
-  if (IS_IOS) $('steps-android').classList.add('hidden');
-  else if (IS_ANDROID) $('steps-ios').classList.add('hidden');
+  // Instalada ya no se explica como instalar, pero si aun faltan los permisos
+  // de aviso la guia sigue teniendo algo que contar: se abre solo con el
+  // apartado que queda pendiente.
+  //
+  // Lo que NO se hace aqui es marcar `done` por estar instalada: la PWA y el
+  // navegador comparten localStorage en el mismo origen, asi que eso mataba la
+  // guia tambien en el navegador tras abrir la app una sola vez. `done` queda
+  // reservado a la instalacion real y al "no volver a mostrar".
+  if (IS_STANDALONE && (!CAN_NOTIFY || Notification.permission === 'granted')) return;
 
-  paintOnboardNotify();
-  $('onboard').classList.remove('hidden');
-  saveOnboard({ count: st.count + 1, last: Date.now() });
+  showOnboarding();
 }
 
 function paintOnboardNotify() {
@@ -2191,6 +2192,13 @@ function paintOnboardNotify() {
     btn.disabled = false;
   }
 }
+
+// Entrada manual: funciona siempre, aunque ya se haya visto 3 veces, se haya
+// descartado o la app este instalada.
+$('btn-guide').onclick = () => {
+  $('admin').classList.add('hidden');
+  showOnboarding({ manual: true });
+};
 
 $('onboard-close').onclick = () => $('onboard').classList.add('hidden');
 $('onboard').onclick = (e) => { if (e.target === $('onboard')) $('onboard').classList.add('hidden'); };

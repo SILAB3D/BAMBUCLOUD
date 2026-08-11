@@ -35,6 +35,11 @@ export class JobCycle extends EventEmitter {
     this.finishedAt = saved.finishedAt || null;
     this.jobName = saved.jobName || null;
     this.outcome = saved.outcome || null; // 'FINISH' | 'FAILED'
+    // La impresora se queda clavada en FINISH hasta el siguiente trabajo, asi
+    // que sin esta marca el primer report posterior a "ya la he retirado"
+    // volveria a abrir la fase `ready` y el aviso reaparecia solo. Se persiste
+    // porque un reinicio tambien reabriria la fase de la pieza ya recogida.
+    this.collected = Boolean(saved.collected);
 
     this._timer = null;
     this._lastState = null;
@@ -96,6 +101,8 @@ export class JobCycle extends EventEmitter {
 
     if (LIVE_STATES.has(norm.state)) {
       this.jobName = norm.jobName || this.jobName;
+      // Hay trabajo vivo otra vez: lo recogido era la pieza anterior.
+      this.collected = false;
       if (this.phase !== 'printing') this._to('printing', { silent: firstEver });
       else this._persist();
       return;
@@ -114,7 +121,7 @@ export class JobCycle extends EventEmitter {
       return;
     }
 
-    if (ended && this.phase === 'idle') {
+    if (ended && this.phase === 'idle' && !this.collected) {
       // Arrancamos con la impresora ya en FINISH: la pieza lleva ahi un rato,
       // damos por hecho que esta fria y no notificamos nada.
       this.jobName = norm.jobName || this.jobName;
@@ -129,12 +136,24 @@ export class JobCycle extends EventEmitter {
     }
   }
 
-  /** El usuario confirma que ha retirado la pieza. */
-  clear() {
+  /**
+   * Devuelve el ciclo a reposo.
+   *
+   * @param {object} [opts]
+   * @param {boolean} [opts.collected] lo confirma el usuario ("ya la he
+   *   retirado"), no un cambio de estado de la impresora. Marca la pieza como
+   *   recogida para que el FINISH que la maquina sigue reportando no vuelva a
+   *   abrir la fase `ready`.
+   */
+  clear({ collected = false } = {}) {
     this._disarm();
     this.finishedAt = null;
     this.outcome = null;
+    this.collected = collected;
     this._to('idle');
+    // Si ya estabamos en idle, `_to` no persiste: la marca se guarda aqui.
+    this._persist();
+    this.store?.flush();
   }
 
   _to(phase, { silent = false } = {}) {
@@ -173,6 +192,7 @@ export class JobCycle extends EventEmitter {
       finishedAt: this.finishedAt,
       jobName: this.jobName,
       outcome: this.outcome,
+      collected: this.collected,
     });
   }
 }
