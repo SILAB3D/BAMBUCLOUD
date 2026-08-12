@@ -58,7 +58,9 @@ openssl rand -hex 24   # para AGENT_TOKEN
 
 `SESSION_SECRET` es opcional: si no lo pones, el servidor genera uno la primera
 vez y lo guarda junto al resto del estado, así que las sesiones siguen valiendo
-tras un reinicio igualmente.
+tras un reinicio igualmente. En Render, donde no hay disco, ponlo (el blueprint
+ya lo hace con `generateValue: true`): de él depende que la sesión de 30 días
+sobreviva a los redespliegues.
 
 Arranca:
 
@@ -104,9 +106,10 @@ Límites del plan gratuito que conviene tener presentes:
   que alguien abre el dashboard, así que en la práctica se recupera al primer acceso —
   pero si el servicio se reinicia mientras nadie mira, los avisos de esa impresión no
   llegarán.
-- Las sesiones se guardan en ese mismo estado, así que sin disco también se pierden:
-  cada vez que el servicio despierta hay que volver a introducir `DASHBOARD_PASSWORD`.
-  Con disco, la sesión dura hasta que pulses *Salir del dashboard*.
+- **La sesión sí sobrevive**, aunque no haya disco: además de la sesión normal, el
+  login deja una cookie firmada de 30 días que no necesita nada guardado en el
+  servidor. Cuando el servicio se reinicia y el almacén de sesiones desaparece, esa
+  cookie la vuelve a levantar sola. Ver *Seguridad* más abajo.
 
 **Si quieres que nada de esto se pierda**: plan `starter` (7 $/mes) y descomenta el bloque
 `disk` de `render.yaml` (montado en `/data`). Con disco, historial, ajustes, suscripciones y
@@ -348,12 +351,31 @@ src/job-cycle.js         fases impresión → enfriamiento → retirada (con tem
 src/notifier.js          catálogo de avisos + transiciones + historial de 15 días + envío
 src/push.js              Web Push (VAPID): alta, baja y purga de suscripciones muertas
 src/store.js             persistencia JSON de historial, ajustes, suscripciones y fase
+src/session-store.js     almacén de sesiones de express-session sobre el JSON
+src/keep-cookie.js       cookie firmada de 30 días: la sesión sobrevive sin disco
+src/rate-limit.js        freno por IP de los intentos de contraseña y de código
 src/server.js            Express + WebSocket + endpoint de cámara + administración
 public/index.html        dashboard (sin build, un solo archivo)
 public/sw.js             Service Worker: caché del armazón + recepción de push
 public/manifest.webmanifest   manifiesto de la PWA
 agent/camera-agent.js    agente de cámara para la LAN
+tools/make-icons.mjs     genera favicon e iconos (figura de la marca)
 ```
+
+### Iconografía
+
+Toda la imagen de la app es el mismo icosaedro: favicon, iconos de la PWA,
+icono de notificación, pantalla de carga y el holograma que ocupa el hueco del
+proyecto. Los PNG y el `favicon.svg` se regeneran con:
+
+```bash
+node tools/make-icons.mjs
+```
+
+El script no tiene dependencias (escribe el PNG a mano con `zlib`) y sale de
+la misma pose que usa el holograma animado en su primer fotograma, para que
+figura quieta y figura girando se reconozcan como la misma. Si tocas la pose o
+los colores, regenera y súbelo: los PNG están versionados.
 
 ---
 
@@ -392,7 +414,13 @@ agent/camera-agent.js    agente de cámara para la LAN
 - Un `pushall` cada 60 s mantiene el estado fresco; abusar de esa frecuencia puede hacer que la nube te limite.
 - La cámara por snapshots (puerto 6000) solo existe en **A1, A1 Mini, P1P y P1S**. Los modelos nuevos solo dan RTSP.
 - **Web Push y la instalación como PWA exigen HTTPS.** Por IP de la LAN (`http://192.168.x.x`) el navegador ni siquiera expone la API de notificaciones, y el botón de la campana se oculta solo.
-- El **código de administración** es una barrera de conveniencia sobre una sesión ya autenticada con `DASHBOARD_PASSWORD`, no un segundo factor: evita tocar los ajustes por accidente desde un móvil desbloqueado. Quien tenga la contraseña del dashboard puede probar códigos sin límite.
+- El **código de administración** es una barrera de conveniencia sobre una sesión ya autenticada con `DASHBOARD_PASSWORD`, no un segundo factor: evita tocar los ajustes por accidente desde un móvil desbloqueado.
+- **Intentos limitados por IP.** `/api/login` y `/api/admin/unlock` llevan un freno: 5 fallos gratis y a partir de ahí cada fallo duplica la espera (2 s, 4 s, 8 s…) hasta un tope de 15 min. Los contadores de las dos puertas son independientes, viven en memoria y se borran al acertar. No es un WAF: es para que probar contraseñas a ciegas cueste tiempo real.
+- **Sesión persistente de 30 días.** Al entrar se emite `bambu.keep`, una cookie `httpOnly` firmada con HMAC-SHA256 —la misma primitiva que `express-session` ya usaba para el identificador de sesión— que permite recuperar la sesión sin nada guardado en el servidor. Consecuencias que conviene tener claras:
+  - Quien robe la cookie entra, igual que con la cookie de sesión de siempre. Nada nuevo aquí.
+  - **No hay revocación individual.** Sin registro en el servidor no hay nada que borrar: *Salir del dashboard* solo puede pedirle al navegador que la tire. Un testigo ya filtrado sigue valiendo hasta que caduque.
+  - El botón de pánico es **cambiar `DASHBOARD_PASSWORD`**: la clave de firma se deriva de `SESSION_SECRET` *y* de la contraseña, así que al cambiarla caducan de golpe todos los dispositivos.
+  - En producción la cookie va `Secure`, así que exige HTTPS. Sobre `http://` de la LAN no se emite (pon `TRUST_HTTPS=false` si de verdad lo necesitas).
 - Los **15 min de enfriamiento son un temporizador fijo**, no una lectura de la cama. La temperatura real se muestra en el panel, pero no adelanta ni retrasa el paso a «lista para retirar». Ajusta `COOLDOWN_MS` si tu caso pide otro margen.
 - Si prefieres no montar el agente: [Tailscale](https://tailscale.com) en tu red y en el VPS te deja llegar a la impresora directamente, y entonces puedes usar la ruta LAN completa (MQTT local incluido).
 

@@ -13,7 +13,7 @@
  * dato viejo es peor que ningun dato.
  */
 
-const CACHE = 'bambu-shell-v6';
+const CACHE = 'bambu-shell-v7';
 // Sin '/index.html': el servidor lo entrega en '/', y pedir los dos en el
 // mismo addAll hace que el navegador aborte la instalacion entera con
 // "Entry already exists". Un Service Worker que no instala no solo deja de
@@ -23,7 +23,9 @@ const SHELL = [
   '/manifest.webmanifest',
   '/icon-192.png',
   '/icon-512.png',
-  // El badge se pinta con la app cerrada y puede tocar sin red: mejor tenerlo.
+  // El icono y el badge se pintan con la app cerrada y puede tocar sin red:
+  // mejor tenerlos ya guardados.
+  '/notify-icon.png',
   '/badge-96.png',
 ];
 
@@ -106,11 +108,14 @@ self.addEventListener('push', (event) => {
     // llegan cinco copias de "enfriando" de golpe.
     tag: data.tag || 'bambu',
     renotify: true,
-    icon: '/icon-192.png',
+    // Sin placa de fondo: la tarjeta del aviso ya pone la suya, y puede ser
+    // clara u oscura segun el tema del sistema. El icosaedro recortado sobre
+    // transparente se lee en las dos; el icono de la app, con su cuadrado
+    // oscuro, dejaba un parche negro sobre las notificaciones en modo claro.
+    icon: '/notify-icon.png',
     // El badge de la barra de estado es una mascara: Android ignora el color y
-    // pinta la silueta que marque el canal alfa. Con el icono normal, opaco de
-    // borde a borde, salia un cuadrado gris macizo; este es el cubo recortado
-    // sobre transparente.
+    // pinta la silueta que marque el canal alfa. Ademas acaba en unos 24 px, y
+    // ahi el alambre no sobrevive: va la silueta maciza de la figura.
     badge: '/badge-96.png',
     data: { url: data.url || '/' },
     vibrate: [90, 60, 90],

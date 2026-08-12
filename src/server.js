@@ -25,6 +25,8 @@ import { normalize } from './normalize.js';
 import { Notifier, HISTORY_DAYS, TRIGGERS } from './notifier.js';
 import { Store } from './store.js';
 import { JsonSessionStore } from './session-store.js';
+import { KeepCookie, KEEP_MAX_AGE_MS } from './keep-cookie.js';
+import { LoginGuard, guarded } from './rate-limit.js';
 import { PushHub } from './push.js';
 import { JobCycle } from './job-cycle.js';
 
@@ -453,8 +455,27 @@ function armCoolingKeepAlive() {
 // ---------------------------------------------------------------------------
 
 const app = express();
+// Render (y cualquier proxy inverso) mete la IP real en X-Forwarded-For. Sin
+// esto `req.ip` seria la del proxy y el freno de intentos meteria a todo
+// internet en el mismo cubo.
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '12mb' }));
+
+const COOKIE_SECURE =
+  process.env.NODE_ENV === 'production' && process.env.TRUST_HTTPS !== 'false';
+
+// Salvavidas de la sesion cuando el almacen en disco no sobrevive al reinicio.
+// Ver src/keep-cookie.js: firmado con SESSION_SECRET + la contrasena, de forma
+// que cambiar la contrasena echa a todo el mundo.
+const keep = new KeepCookie({
+  secret: sessionSecret(),
+  password: DASH_PASSWORD,
+  secure: COOKIE_SECURE,
+});
+
+// Un freno por IP para las dos puertas con codigo.
+const loginGuard = new LoginGuard();
+
 app.use(
   session({
     name: 'bambu.sid',
@@ -469,10 +490,28 @@ app.use(
       maxAge: SESSION_MAX_AGE,
       httpOnly: true,
       sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production' && process.env.TRUST_HTTPS !== 'false',
+      secure: COOKIE_SECURE,
     },
   }),
 );
+
+/**
+ * Recupera la sesion a partir de la cookie persistente.
+ *
+ * Se ejecuta antes que nada: si el almacen de sesiones se perdio en un
+ * reinicio pero el navegador aun trae un testigo valido, la sesion se vuelve a
+ * levantar aqui y el resto del servidor no se entera de que hubo un corte.
+ */
+app.use((req, res, next) => {
+  if (!DASH_PASSWORD || req.session?.authed) return next();
+  const token = keep.verify(req);
+  if (!token) return next();
+  req.session.authed = true;
+  // Renovada solo cuando le queda poco: reescribirla en cada peticion llenaria
+  // las respuestas de Set-Cookie sin ganar nada.
+  if (keep.needsRefresh(token)) keep.issue(res);
+  next();
+});
 
 function requireAuth(req, res, next) {
   if (!DASH_PASSWORD) return next(); // sin password configurado = abierto
@@ -480,7 +519,7 @@ function requireAuth(req, res, next) {
   return res.status(401).json({ error: 'No autorizado' });
 }
 
-app.post('/api/login', (req, res) => {
+app.post('/api/login', guarded(loginGuard, 'login', (req, res) => {
   if (!DASH_PASSWORD) {
     req.session.authed = true;
     return res.json({ ok: true });
@@ -490,13 +529,17 @@ app.post('/api/login', (req, res) => {
   const b = Buffer.from(DASH_PASSWORD.padEnd(64).slice(0, 64));
   if (crypto.timingSafeEqual(a, b) && given.length === DASH_PASSWORD.length) {
     req.session.authed = true;
+    keep.issue(res);
     return res.json({ ok: true });
   }
   return res.status(401).json({ error: 'Password incorrecta' });
-});
+}));
 
 // La unica forma de cerrar la sesion: sin esto se queda abierta indefinidamente.
+// Hay que tirar las dos cookies; dejar la persistente volveria a abrirla en la
+// siguiente peticion.
 app.post('/api/logout', (req, res) => {
+  keep.clear(res);
   req.session.destroy(() => {
     res.clearCookie('bambu.sid');
     res.json({ ok: true });
@@ -641,13 +684,13 @@ function sameCode(given) {
   return crypto.timingSafeEqual(a, b) && String(given).length === ADMIN_CODE.length;
 }
 
-app.post('/api/admin/unlock', requireAuth, (req, res) => {
+app.post('/api/admin/unlock', requireAuth, guarded(loginGuard, 'admin', (req, res) => {
   if (!sameCode(req.body?.code || '')) {
     return res.status(401).json({ error: 'Código incorrecto' });
   }
   req.session.adminUntil = Date.now() + ADMIN_TTL;
   res.json({ ok: true });
-});
+}));
 
 app.post('/api/admin/lock', requireAuth, (req, res) => {
   if (req.session) req.session.adminUntil = 0;
@@ -791,6 +834,12 @@ wss.on('connection', (ws) => {
 server.listen(PORT, () => {
   console.log(`Dashboard escuchando en http://localhost:${PORT}`);
   console.log(`[store] estado en ${STATE_FILE} (${notifier.history.length} eventos)`);
+  if (DASH_PASSWORD) {
+    console.log(
+      `[auth] sesion persistente ${Math.round(KEEP_MAX_AGE_MS / 86_400_000)} dias ` +
+        '(cambiar DASHBOARD_PASSWORD la invalida en todos los dispositivos)',
+    );
+  }
   if (push.enabled) console.log(`[push] activo, ${push.count} dispositivo(s) suscrito(s)`);
   if (KEEPALIVE_URL) {
     console.log(

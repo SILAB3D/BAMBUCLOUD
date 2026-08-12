@@ -10,6 +10,10 @@
 <meta name="apple-mobile-web-app-title" content="Bambu Status">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="/manifest.webmanifest">
+<!-- El SVG manda en todo lo moderno; el PNG de 32 es el respaldo para los
+     navegadores que aun no leen favicons vectoriales. -->
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="icon" href="/icon-192.png" sizes="192x192" type="image/png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <title>Bambu Lab · Estado</title>
@@ -1534,7 +1538,46 @@ const HOLO = (() => {
       if (d2(i, j) < min * 1.05) edges.push([i, j]);
     }
   }
-  return { verts, edges };
+
+  // ---- Pose canonica -----------------------------------------------------
+  // La figura se reorienta para que su posicion de reposo sea exactamente la
+  // del icono y el favicon: mirando de frente a una cara, que es la vista que
+  // da la silueta hexagonal en punta. Sin esto el holograma arrancaba en una
+  // pose cualquiera y no se reconocia como la misma figura de la marca.
+  // La misma rotacion la calcula tools/make-icons.mjs para los PNG.
+  const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const cross3 = (a, b) => [
+    a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0],
+  ];
+  const unit = (v) => { const m = Math.hypot(v[0], v[1], v[2]); return v.map((c) => c / m); };
+
+  // Una cara cualquiera: el primer trio de vertices mutuamente adyacentes.
+  const adj = (i, j) => d2(i, j) < min * 1.05;
+  let face = null;
+  outer: for (let i = 0; i < 12; i++) {
+    for (let j = i + 1; j < 12; j++) {
+      if (!adj(i, j)) continue;
+      for (let k = j + 1; k < 12; k++) {
+        if (adj(i, k) && adj(j, k)) { face = [i, j, k]; break outer; }
+      }
+    }
+  }
+  const axis = unit(face.reduce(
+    (s, i) => [s[0] + verts[i][0], s[1] + verts[i][1], s[2] + verts[i][2]], [0, 0, 0],
+  ));
+  const seed = Math.abs(axis[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+  const u = unit(cross3(seed, axis));
+  const w = cross3(axis, u);
+
+  // Base (x derecha, y abajo, z hacia la camara) y giro en el plano hasta
+  // dejar un vertice de la silueta justo arriba.
+  const flatPose = verts.map((v) => [dot3(v, u), -dot3(v, w), dot3(v, axis)]);
+  const top = flatPose.reduce((a, b) => (b[1] < a[1] ? b : a));
+  const th = -Math.atan2(top[0], -top[1]);
+  const ct = Math.cos(th), st = Math.sin(th);
+  const posed = flatPose.map(([x, y, z]) => [x * ct - y * st, x * st + y * ct, z]);
+
+  return { verts: posed, edges };
 })();
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -1566,8 +1609,10 @@ function drawHolo(holo, t) {
   const R = 33;
   const D = 3.4; // distancia de camara; da algo de perspectiva sin deformar
 
-  const ay = t * 0.00062;                         // giro constante
-  const ax = 0.38 + Math.sin(t * 0.00029) * 0.16; // cabeceo lento
+  // En t = 0 las dos rotaciones son nulas, o sea que el primer fotograma es
+  // la pose canonica del icono. A partir de ahi gira y cabecea.
+  const ay = t * 0.00062;                   // giro constante
+  const ax = Math.sin(t * 0.00029) * 0.30;  // cabeceo lento
   const cy = Math.cos(ay), sy = Math.sin(ay);
   const cx = Math.cos(ax), sx = Math.sin(ax);
 
@@ -1613,13 +1658,17 @@ let gateRaf = 0;
 
 function startGateHolo() {
   if (!gateHolo) gateHolo = makeHolo('gate-edges', 'gate-verts', { thickness: 0.85 });
-  drawHolo(gateHolo, 1200);
+  drawHolo(gateHolo, 0);
   if (REDUCED || gateRaf) return;
+  // Tiempo relativo al primer fotograma: asi el giro empieza en la pose
+  // canonica en vez de saltar a donde tocase segun el reloj de la pagina.
+  let t0 = 0;
   const loop = (now) => {
     if ($('gate').classList.contains('hidden')) { gateRaf = 0; return; }
     gateRaf = requestAnimationFrame(loop);
     if (document.visibilityState !== 'visible') return;
-    drawHolo(gateHolo, now);
+    if (!t0) t0 = now;
+    drawHolo(gateHolo, now - t0);
   };
   gateRaf = requestAnimationFrame(loop);
 }
@@ -1641,7 +1690,14 @@ function runSplash() {
 
   let raf = 0;
   if (!REDUCED) {
-    const loop = (now) => { drawHolo(holo, now * 1.9); raf = requestAnimationFrame(loop); };
+    // Empieza quieto en la pose del icono y arranca a girar desde ahi: es el
+    // gesto de "la marca cobra vida", no una figura que ya venia rodando.
+    let t0 = 0;
+    const loop = (now) => {
+      if (!t0) t0 = now;
+      drawHolo(holo, (now - t0) * 1.9);
+      raf = requestAnimationFrame(loop);
+    };
     raf = requestAnimationFrame(loop);
   }
 
@@ -1657,15 +1713,17 @@ function startHolo() {
   if (!coverHolo) coverHolo = makeHolo('holo-edges', 'holo-verts');
   // Una pose ya dibujada antes de arrancar el bucle: si no, el primer pintado
   // muestra el marco vacio hasta que llega el primer fotograma.
-  drawHolo(coverHolo, 2400);
+  drawHolo(coverHolo, 0);
   if (REDUCED || holoRaf) return;              // pose fija, sin movimiento
+  let t0 = 0;
   const loop = (now) => {
     holoRaf = requestAnimationFrame(loop);
     // Nada que dibujar si hay portada de verdad o la pestana esta oculta:
     // es decoracion, no tiene por que gastar bateria de fondo.
     if (document.visibilityState !== 'visible') return;
     if ($('cover-ph').classList.contains('hidden')) return;
-    drawHolo(coverHolo, now);
+    if (!t0) t0 = now;
+    drawHolo(coverHolo, now - t0);
   };
   holoRaf = requestAnimationFrame(loop);
 }
@@ -1701,8 +1759,11 @@ $('gate-btn').onclick = async () => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ password: $('gate-pass').value }),
   });
-  if (res.ok) { $('gate').classList.add('hidden'); start(); }
-  else failMsg($('gate-msg'), 'Contraseña incorrecta');
+  if (res.ok) { $('gate').classList.add('hidden'); start(); return; }
+  // 429 = el servidor esta frenando los intentos. Decirlo con su espera evita
+  // que uno siga aporreando el boton creyendo que falla la contrasena.
+  const j = await res.json().catch(() => ({}));
+  failMsg($('gate-msg'), res.status === 429 ? j.error : 'Contraseña incorrecta');
 };
 $('gate-pass').onkeydown = (e) => { if (e.key === 'Enter') $('gate-btn').click(); };
 
@@ -2380,8 +2441,9 @@ $('admin-unlock').onclick = async () => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ code: $('admin-code').value }),
   });
-  if (res.ok) showAdminPanel();
-  else failMsg($('admin-msg'), 'Código incorrecto');
+  if (res.ok) { showAdminPanel(); return; }
+  const j = await res.json().catch(() => ({}));
+  failMsg($('admin-msg'), res.status === 429 ? j.error : 'Código incorrecto');
 };
 $('admin-code').onkeydown = (e) => { if (e.key === 'Enter') $('admin-unlock').click(); };
 
