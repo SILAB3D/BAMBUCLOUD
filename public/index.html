@@ -1386,10 +1386,13 @@ function renderPrinting(s) {
   const pct = s?.percent ?? null;
   // El anillo dice que esta pasando, no que representa el numero: el % ya se
   // entiende solo, y "completado" no aportaba nada.
-  setRing(pct, s?.state === 'PAUSE' ? 'en pausa'
+  const label = s?.state === 'PAUSE' ? 'en pausa'
     : s?.printing ? 'imprimiendo'
     : s?.state === 'FINISH' ? 'terminada'
-    : (s?.stateText || '—'));
+    : (s?.stateText || '—');
+  // En reposo no hay actividad que anunciar: la pestaña vuelve a su nombre.
+  const idle = !s?.printing && s?.state !== 'PAUSE';
+  setRing(pct, label, { tab: idle ? null : label[0].toUpperCase() + label.slice(1) });
 
   $('tile1-label').textContent = 'Restante';
   $('tile1-value').textContent = s?.remainingText || '—';
@@ -1415,7 +1418,7 @@ function renderCooling(cycle, s) {
   const total = cycle.coolMs || 15 * 60_000;
   const pct = Math.max(0, Math.min(100, ((total - left) / total) * 100));
 
-  setRing(pct, 'enfriando');
+  setRing(pct, 'enfriando', { tab: 'Enfriando' });
 
   $('tile1-label').textContent = 'Listo en';
   $('tile1-value').textContent = countdown(left);
@@ -1438,7 +1441,7 @@ function renderCooling(cycle, s) {
 }
 
 function renderReady(cycle) {
-  setRing(100, 'puedes retirarla', 'Lista');
+  setRing(100, 'puedes retirarla', { text: 'Lista', tab: 'Lista para retirar' });
 
   $('tile1-label').textContent = 'Terminada';
   $('tile1-value').textContent = cycle.finishedAt ? clockTime(cycle.finishedAt) : '—';
@@ -1458,7 +1461,39 @@ function renderReady(cycle) {
  * Pinta el anillo grande. `text` sustituye al numero cuando la fase no se mide
  * en porcentaje (la retirada, por ejemplo).
  */
-function setRing(pct, label, text) {
+const TAB_IDLE = 'Bambu Lab · Estado';
+
+/**
+ * Pestaña del navegador: porcentaje de la actividad en curso y la actividad.
+ *
+ * Con varias pestañas abiertas es lo unico que se ve de la app sin cambiar a
+ * ella, asi que lleva el dato que se consulta —cuanto queda— y no el nombre
+ * del fichero, que ademas venia tan largo que se cortaba antes de llegar a
+ * nada util.
+ */
+function setTabTitle(pct, activity) {
+  if (!activity) { document.title = TAB_IDLE; return; }
+  document.title = pct == null
+    ? `${activity} · Bambu Lab`
+    : `${Math.round(pct)}% · ${activity}`;
+}
+
+/**
+ * @param {number|null} pct  porcentaje del anillo
+ * @param {string} label     rotulo bajo el numero
+ * @param {object} [opts]
+ * @param {string} [opts.text] texto que sustituye al numero ("Lista")
+ * @param {string} [opts.tab]  actividad para la pestaña del navegador
+ */
+function setRing(pct, label, opts = {}) {
+  const { text, tab } = opts;
+  // El titulo se pone aqui y no en renderState porque durante el enfriamiento
+  // el porcentaje avanza por reloj: esta funcion se repinta cada segundo y el
+  // otro sitio solo cuando llega un mensaje de la impresora.
+  //
+  // Con `text` el anillo no muestra un numero sino una palabra ("Lista"), asi
+  // que la pestaña tampoco lleva porcentaje.
+  setTabTitle(text ? null : pct, tab);
   $('ring-label').textContent = label;
   $('pct-sign').classList.toggle('hidden', pct == null || Boolean(text));
 
@@ -2081,12 +2116,8 @@ function renderState(s) {
   renderFilament(s);
   renderHms(s);
 
-  const phase = phaseOf(s, lastCycle);
-  document.title =
-    phase === 'printing' && s.percent != null ? `${s.percent}% · ${s.jobName || 'Bambu Lab'}`
-    : phase === 'cooling' ? 'Enfriando · Bambu Lab'
-    : phase === 'ready' ? 'Lista para retirar · Bambu Lab'
-    : 'Bambu Lab · Estado';
+  // El titulo de la pestaña lo lleva setRing, que es quien conoce el
+  // porcentaje y la actividad de cada fase (ver setTabTitle).
 }
 
 function renderHms(s) {
