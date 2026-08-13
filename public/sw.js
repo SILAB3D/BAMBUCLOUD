@@ -13,7 +13,7 @@
  * dato viejo es peor que ningun dato.
  */
 
-const CACHE = 'bambu-shell-v7';
+const CACHE = 'bambu-shell-v8';
 // Sin '/index.html': el servidor lo entrega en '/', y pedir los dos en el
 // mismo addAll hace que el navegador aborte la instalacion entera con
 // "Entry already exists". Un Service Worker que no instala no solo deja de

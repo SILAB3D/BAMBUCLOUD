@@ -223,15 +223,29 @@ El panel de administración diagnostica las tres capas por separado:
 
 ### Ventana de bienvenida
 
-La primera vez explica cómo instalar la app y cómo permitir los avisos. Aparece como mucho
-**3 veces y nunca dos veces el mismo día**. El recuento vive en `localStorage`, así que es
-por dispositivo.
+Trata dos asuntos distintos y con distinto peso, y se nota en el diseño:
 
-Con la app ya instalada no vuelve a salir sola, salvo que aún falten los permisos de aviso:
-en ese caso se abre solo con ese apartado, que es lo único que queda por hacer.
+- **Avisos** (prioritario): bloque con el color de acento, su estado del permiso a la vista
+  (*sin activar* / *activados* / *bloqueados*) y el único botón sólido de la ventana.
+- **Instalación** (secundario): en gris. En iPhone sube a *obligatorio*, porque Safari solo
+  permite avisos a las apps añadidas a la pantalla de inicio.
 
-Se puede abrir cuando se quiera desde **Administración → Ver guía de instalación**, sin
-importar cuántas veces se haya visto ni si se descartó.
+**Aparece en cada bienvenida mientras falte el permiso de avisos.** No hay tope de aperturas
+ni espera entre ellas: lo que está limitado es cuántas veces se puede cerrar sin resolverlo.
+
+**Tres cierres.** El botón *Ahora no* dice cuántos quedan; al agotarlos desaparecen tanto ese
+botón como el aspa, y tocar fuera tampoco la cierra. La única salida es conceder el permiso.
+El recuento vive en `localStorage`: es por dispositivo, igual que el permiso, y sobrevive a
+los reinicios y redespliegues del servidor.
+
+**Excepción, deliberada:** si el permiso es inalcanzable ahora mismo —bloqueado en los ajustes
+del navegador, navegador sin soporte, o iPhone sin instalar— el botón de cerrar se mantiene
+aunque no queden cierres. Sin esa salida la app quedaría inservible detrás de un modal que el
+usuario no puede quitar de ninguna manera.
+
+Se puede abrir cuando se quiera desde **Administración → Ver guía de instalación**. Abierta
+así siempre se puede cerrar y no gasta cierres: la ha pedido el usuario, no se le está
+insistiendo.
 
 ### Otros canales
 

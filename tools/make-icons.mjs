@@ -109,6 +109,40 @@ function canonicalPose() {
 
 const POSE = canonicalPose();
 
+/**
+ * Aristas visibles: las que tocan al menos una cara orientada hacia la camara.
+ *
+ * Es la ocultacion de lineas de toda la vida, que en un solido convexo se
+ * resuelve solo mirando la normal de cada cara. Sin esto se dibujan las
+ * treinta aristas, las de detras se cruzan con las de delante y lo que sale es
+ * una maraña en estrella, no el dado de la referencia.
+ */
+const VISIBLE_EDGES = (() => {
+  // Las 20 caras: cada trio de vertices mutuamente adyacentes.
+  const faces = [];
+  for (let i = 0; i < 12; i++) {
+    for (let j = i + 1; j < 12; j++) {
+      if (!ICO.adjacent(i, j)) continue;
+      for (let k = j + 1; k < 12; k++) {
+        if (ICO.adjacent(i, k) && ICO.adjacent(j, k)) faces.push([i, j, k]);
+      }
+    }
+  }
+  // En un poliedro regular centrado en el origen, la normal de una cara apunta
+  // igual que su centro, asi que basta con la z del centroide.
+  const towardCamera = faces.filter(
+    (f) => (POSE[f[0]].z + POSE[f[1]].z + POSE[f[2]].z) / 3 > 1e-9,
+  );
+
+  const seen = new Set();
+  for (const [a, b, c] of towardCamera) {
+    for (const [p, q] of [[a, b], [b, c], [a, c]]) {
+      seen.add(p < q ? `${p},${q}` : `${q},${p}`);
+    }
+  }
+  return ICO.edges.filter(([a, b]) => seen.has(`${a},${b}`));
+})();
+
 /* ==========================================================================
    Rasterizado
    ==========================================================================
@@ -213,49 +247,33 @@ const gradient = (t) => [
 const flat = (rgb) => () => rgb;
 
 /**
- * Separa la figura en trazos de detras y de delante. Las de detras van mas
- * finas y translucidas: es lo unico que da volumen a un alambre sin caras.
+ * Los trazos de la figura, todos iguales.
+ *
+ * Sin puntos en los vertices y sin halo: es un dibujo de lineas, como la
+ * referencia. La version con profundidad y resplandor se probo antes y a 32 px
+ * —que es donde de verdad vive un favicon— se emborronaba hasta parecer una
+ * mancha; el trazo plano y uniforme aguanta el tamano pequeno.
  */
-function figureShapes(size, radius, { stroke, vertex }) {
+function figureShapes(size, radius, stroke) {
   const cx = size / 2, cy = size / 2;
-  const P = POSE.map((v) => ({ x: cx + v.x * radius, y: cy + v.y * radius, z: v.z }));
-
-  const back = [], front = [];
-  for (const [a, b] of ICO.edges) {
-    const isFront = (P[a].z + P[b].z) / 2 > 0;
-    (isFront ? front : back).push({
-      x1: P[a].x, y1: P[a].y, x2: P[b].x, y2: P[b].y,
-      hw: (isFront ? stroke : stroke * 0.78) / 2,
-    });
-  }
-  for (const p of P) {
-    const isFront = p.z > 0;
-    (isFront ? front : back).push({
-      cx: p.x, cy: p.y, r2: isFront ? vertex : vertex * 0.72,
-    });
-  }
-  return { back, front };
+  const P = POSE.map((v) => ({ x: cx + v.x * radius, y: cy + v.y * radius }));
+  return VISIBLE_EDGES.map(([a, b]) => ({
+    x1: P[a].x, y1: P[a].y, x2: P[b].x, y2: P[b].y, hw: stroke / 2,
+  }));
 }
 
 /**
- * @param opts.scale     fraccion del lienzo que ocupa la figura (diametro)
- * @param opts.tint      degradado o color plano
- * @param opts.glow      halo alrededor de los trazos
+ * @param opts.scale   fraccion del lienzo que ocupa la figura (diametro)
+ * @param opts.tint    degradado vertical o color plano
+ * @param opts.strokeK grosor del trazo, en fraccion del lienzo
  */
 function paintFigure(cv, opts = {}) {
-  const {
-    scale = 0.68, tint = gradient, glow = 0.30, strokeK = 0.023, vertexK = 0.032,
-  } = opts;
+  const { scale = 0.72, tint = gradient, strokeK = 0.026 } = opts;
   const size = cv.size;
   const radius = (size * scale) / 2;
-  const stroke = Math.max(1.15, size * strokeK);
-  const vertex = Math.max(1.5, size * vertexK);
+  const stroke = Math.max(1.1, size * strokeK);
 
-  const { back, front } = figureShapes(size, radius, { stroke, vertex });
-  const glowRadius = size * 0.028;
-
-  paintLayer(cv, back,  { tint, opacity: 0.26, glow: glow * 0.25, glowRadius });
-  paintLayer(cv, front, { tint, opacity: 1,    glow, glowRadius });
+  paintLayer(cv, figureShapes(size, radius, stroke), { tint });
 }
 
 /**
@@ -308,14 +326,22 @@ function paintSilhouette(cv, { scale = 0.9 } = {}) {
    Fondos
    ========================================================================== */
 
-/** Cuadrado con esquinas redondeadas y un degradado radial frio. */
+/**
+ * Cuadrado de esquinas redondeadas, oscuro y liso.
+ *
+ * Solo un degradado muy leve para que no parezca un recorte de cartulina. El
+ * halo de color que habia antes competia con la figura justo al tamano en que
+ * la figura ya se ve mal.
+ */
 function paintPlate(cv, { rounding = 0.22 } = {}) {
   const { size } = cv;
   const r = size * rounding;
-  const gx = size * 0.5, gy = size * 0.34;
-  const gr = size * 0.78;
 
   for (let y = 0; y < size; y++) {
+    const t = y / (size - 1);
+    const base = [
+      lerp(0x14, 0x08, t) / 255, lerp(0x1c, 0x0b, t) / 255, lerp(0x27, 0x10, t) / 255,
+    ];
     for (let x = 0; x < size; x++) {
       const px = x + 0.5, py = y + 0.5;
 
@@ -324,17 +350,7 @@ function paintPlate(cv, { rounding = 0.22 } = {}) {
       const qy = Math.abs(py - size / 2) - (size / 2 - r);
       const d = Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - r;
       const a = clamp01(0.5 - d);
-      if (a <= 0) continue;
-
-      // Base oscura + halo verde-azulado detras de la figura.
-      const t = clamp01(Math.hypot(px - gx, py - gy) / gr);
-      const base = [lerp(0x14, 0x07, t) / 255, lerp(0x1e, 0x0a, t) / 255, lerp(0x2b, 0x10, t) / 255];
-      const halo = Math.exp(-(t * t) / 0.22) * 0.30;
-      composite(cv, (y * size + x) * 4,
-        base[0] + HOLO_BOT[0] * halo,
-        base[1] + HOLO_BOT[1] * halo,
-        base[2] + HOLO_BOT[2] * halo,
-        a);
+      if (a > 0) composite(cv, (y * size + x) * 4, base[0], base[1], base[2], a);
     }
   }
 }
@@ -408,16 +424,26 @@ function write(name, cv) {
    SVG (favicon)
    ========================================================================== */
 
-function faviconSvg() {
-  const S = 64, R = (S * 0.70) / 2, c = S / 2;
-  const P = POSE.map((v) => ({ x: c + v.x * R, y: c + v.y * R, z: v.z }));
+/**
+ * @param plate false = fondo transparente (version de notificacion)
+ */
+function faviconSvg({ plate = true, scale = 0.72, stroke = 1.9 } = {}) {
+  const S = 64, R = (S * scale) / 2, c = S / 2;
+  const P = POSE.map((v) => ({ x: c + v.x * R, y: c + v.y * R }));
   const f = (n) => n.toFixed(2);
 
-  const line = ([a, b]) =>
-    `<line x1="${f(P[a].x)}" y1="${f(P[a].y)}" x2="${f(P[b].x)}" y2="${f(P[b].y)}"/>`;
-  const backEdges = ICO.edges.filter(([a, b]) => (P[a].z + P[b].z) / 2 <= 0);
-  const frontEdges = ICO.edges.filter(([a, b]) => (P[a].z + P[b].z) / 2 > 0);
-  const vtx = (p, r) => `<circle cx="${f(p.x)}" cy="${f(p.y)}" r="${r}"/>`;
+  const edges = VISIBLE_EDGES
+    .map(([a, b]) => `<line x1="${f(P[a].x)}" y1="${f(P[a].y)}" x2="${f(P[b].x)}" y2="${f(P[b].y)}"/>`)
+    .join('');
+
+  const bg = plate
+    ? `<rect width="${S}" height="${S}" rx="${S * 0.22}" fill="url(#p)"/>`
+    : '';
+  const plateDef = plate
+    ? `<linearGradient id="p" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#141c27"/><stop offset="1" stop-color="#080b10"/>
+  </linearGradient>`
+    : '';
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${S} ${S}">
 <!-- Generado por tools/make-icons.mjs. No editar a mano. -->
@@ -425,20 +451,11 @@ function faviconSvg() {
   <linearGradient id="e" x1="0" y1="0" x2="0" y2="1">
     <stop offset="0" stop-color="#7ef0ff"/><stop offset="1" stop-color="#00d492"/>
   </linearGradient>
-  <radialGradient id="p" cx=".5" cy=".34" r=".78">
-    <stop offset="0" stop-color="#16202d"/><stop offset="1" stop-color="#080b10"/>
-  </radialGradient>
+  ${plateDef}
 </defs>
-<rect width="${S}" height="${S}" rx="${S * 0.22}" fill="url(#p)"/>
-<circle cx="${c}" cy="${c}" r="${R * 1.25}" fill="#00d492" opacity=".14"/>
-<g fill="none" stroke="url(#e)" stroke-linecap="round">
-  <g stroke-width="1.4" opacity=".34">${backEdges.map(line).join('')}</g>
-  <g stroke-width="1.9">${frontEdges.map(line).join('')}</g>
-</g>
-<g fill="#a8f6ff">
-  <g opacity=".4">${P.filter((p) => p.z <= 0).map((p) => vtx(p, 1.5)).join('')}</g>
-  ${P.filter((p) => p.z > 0).map((p) => vtx(p, 2.1)).join('')}
-</g>
+${bg}
+<g fill="none" stroke="url(#e)" stroke-width="${stroke}" stroke-linecap="round"
+   stroke-linejoin="round">${edges}</g>
 </svg>
 `;
 }
@@ -475,20 +492,21 @@ for (const [name, size] of [['icon-192.png', 192], ['icon-512.png', 512]]) {
   write('apple-touch-icon.png', cv);
 }
 
-// Respaldo del favicon para navegadores sin SVG.
+// Respaldo del favicon para navegadores sin SVG. A 32 px el trazo tiene que
+// engordar bastante o las lineas interiores se comen unas a otras.
 {
   const cv = canvas(32);
   paintPlate(cv, { rounding: 0.22 });
-  paintFigure(cv, { scale: 0.72, strokeK: 0.045, vertexK: 0.052, glow: 0.35 });
+  paintFigure(cv, { scale: 0.74, strokeK: 0.042 });
   write('favicon-32.png', cv);
 }
 
-// --- Notificacion: sin fondo ----------------------------------------------
-// Android la pinta sobre la tarjeta del sistema, que puede ser blanca o
-// negra segun el tema. Sin placa y con trazo grueso se lee en las dos.
+// --- Notificacion: la misma figura, sin placa -----------------------------
+// Android la pinta sobre la tarjeta del sistema, que puede ser blanca o negra
+// segun el tema. Sin fondo y con trazo grueso se lee en las dos.
 {
   const cv = canvas(192);
-  paintFigure(cv, { scale: 0.86, strokeK: 0.038, vertexK: 0.050, glow: 0.28 });
+  paintFigure(cv, { scale: 0.88, strokeK: 0.036 });
   write('notify-icon.png', cv);
 }
 

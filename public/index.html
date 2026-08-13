@@ -162,14 +162,17 @@ img{max-width:100%}
 }
 .gate input::placeholder{letter-spacing:0}
 .gate input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px rgba(0,212,146,.13)}
-.primary{
+/* Acotada a `button` a proposito: como selector suelto, `.primary` alcanzaba
+   tambien a cualquier contenedor marcado como principal y le encasquetaba el
+   fondo verde y el texto casi negro del boton. */
+button.primary{
   width:100%;padding:13px;font-size:15px;font-weight:650;cursor:pointer;
   border-radius:var(--r-md);border:none;color:#04160f;
   background:linear-gradient(135deg,var(--accent),#00b8a9);
   transition:transform .15s var(--ease),filter .2s;
 }
-.primary:hover{filter:brightness(1.08)}
-.primary:active{transform:scale(.98)}
+button.primary:hover{filter:brightness(1.08)}
+button.primary:active{transform:scale(.98)}
 .msg{color:var(--err);font-size:13px;min-height:20px;margin-top:10px}
 .msg.shake{animation:shake .4s}
 
@@ -309,8 +312,10 @@ img{max-width:100%}
 }
 .status-card.ph-printing::after{animation:sweep 5.5s ease-in-out infinite;opacity:1}
 
-.ring-wrap{display:grid;place-items:center;padding:2px 0 10px}
-.ring{position:relative;width:min(100%,clamp(158px,26vw,214px));aspect-ratio:1}
+/* Anillo a la izquierda + columna de tiempos a la derecha, centrados entre si
+   para que los dos valores queden a la altura del porcentaje. */
+.ring-row{display:flex;align-items:center;gap:clamp(12px,3vw,20px);padding:2px 0 10px}
+.ring{position:relative;width:clamp(124px,30vw,178px);aspect-ratio:1;flex:none}
 .ring svg{width:100%;height:100%;display:block;overflow:visible}
 .ring .track{stroke:rgba(255,255,255,.06)}
 .ring .arc{stroke:url(#g-main);filter:drop-shadow(0 0 8px rgba(0,212,146,.45));
@@ -326,26 +331,28 @@ img{max-width:100%}
 .ph-printing .head,.ph-cooling .head{animation:throb 2s ease-in-out infinite}
 .ring .readout{position:absolute;inset:0;display:flex;flex-direction:column;
   align-items:center;justify-content:center;pointer-events:none;text-align:center;padding:0 12%}
-.ring .readout b{font-size:clamp(34px,7vw,52px);font-weight:660;line-height:1;
+.ring .readout b{font-size:clamp(28px,6vw,44px);font-weight:660;line-height:1;
   letter-spacing:-.035em}
 .ring .readout b i{font-size:.42em;font-style:normal;color:var(--dim);margin-left:2px}
-.ring .readout small{font-size:clamp(10px,1.5vw,11.5px);color:var(--faint);margin-top:7px;
+.ring .readout small{font-size:clamp(9.5px,1.4vw,11px);color:var(--faint);margin-top:6px;
   letter-spacing:.04em}
-.ph-ready .readout b{font-size:clamp(26px,5vw,36px);color:var(--accent)}
+.ph-ready .readout b{font-size:clamp(21px,4.2vw,31px);color:var(--accent)}
 .ph-ready .readout small{color:var(--dim)}
 
-.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+/* Los dos tiempos, uno debajo del otro y alineados a la derecha. */
+.tiles{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px}
 .tile{
   background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-md);
   padding:10px 12px;display:flex;flex-direction:column;justify-content:center;
+  align-items:flex-end;text-align:right;
 }
-.tile .l{display:flex;align-items:center;gap:5px;font-size:10px;text-transform:uppercase;
-  letter-spacing:.06em;color:var(--faint);margin-bottom:4px;white-space:nowrap;
-  overflow:hidden;text-overflow:ellipsis}
+.tile .l{display:flex;align-items:center;justify-content:flex-end;gap:5px;font-size:10px;
+  text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin-bottom:4px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .tile .l svg{width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:2;
   stroke-linecap:round;stroke-linejoin:round;flex:none}
 .tile .v{font-size:clamp(16px,2.8vw,21px);font-weight:650;letter-spacing:-.025em;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 
 .bar-head{display:flex;justify-content:space-between;align-items:baseline;
   font-size:11.5px;color:var(--faint);margin-bottom:6px;gap:10px}
@@ -454,16 +461,21 @@ img{max-width:100%}
 .fil-cell.void .disc::after{display:none}
 
 /* En uso: el borde toma el color del propio filamento. Si no hay ninguno en
-   uso no se resalta nada, y la rejilla se lee como un inventario a secas. */
+   uso no se resalta nada, y la rejilla se lee como un inventario a secas.
+   Ojo con --c frente a --ci: el color crudo solo vale para el disco. En texto
+   y bordes va --ci, la version aclarada hasta tener contraste, porque con un
+   filamento negro o azul marino el cartel de "en uso" se volvia invisible. */
 .fil-cell.active{
-  background:var(--surface);border-color:var(--c,var(--accent));
-  box-shadow:0 0 0 1px var(--c,var(--accent)),0 6px 20px -8px var(--c,var(--accent));
+  background:var(--surface);border-color:var(--ci,var(--accent));
+  box-shadow:0 0 0 1px var(--ci,var(--accent)),0 6px 20px -8px var(--c,var(--accent));
 }
 .fil-cell .use{
   display:none;position:absolute;top:-7px;right:10px;align-items:center;gap:4px;
-  padding:1px 7px;border-radius:99px;font-size:9px;font-weight:700;letter-spacing:.06em;
-  text-transform:uppercase;background:var(--surface-2);color:var(--c,var(--accent));
-  border:1px solid var(--c,var(--accent));
+  padding:1.5px 8px;border-radius:99px;font-size:9px;font-weight:700;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--ci,var(--accent));
+  /* Fondo propio y opaco: el cartel monta sobre el borde de la casilla, y si
+     deja pasar lo de debajo el trazo le cruza las letras. */
+  background:#141a24;border:1px solid var(--ci,var(--accent));
 }
 .fil-cell.active .use{display:inline-flex}
 .fil.is-changing .fil-cell.active{
@@ -602,6 +614,64 @@ img{max-width:100%}
 .sw[aria-checked="true"]::after{transform:translateX(19px);background:var(--accent)}
 .sw[disabled]{opacity:.4;cursor:not-allowed}
 
+/* ==========================================================================
+   Ventana de bienvenida
+   ==========================================================================
+   Dos bloques con jerarquia visible: el de avisos lleva color de acento,
+   borde encendido y el boton solido; el de instalacion se queda en gris. La
+   idea es que de un vistazo se vea que son dos asuntos distintos y cual de
+   los dos importa.
+   ========================================================================== */
+.onboard-sheet{width:min(100%,460px)}
+
+.topic{
+  border:1px solid var(--line);border-radius:var(--r-md);padding:14px;
+  margin-bottom:12px;background:var(--surface-2);
+}
+.topic.primary{
+  border-color:rgba(0,212,146,.38);
+  background:linear-gradient(180deg,rgba(0,212,146,.10),rgba(0,212,146,.02));
+  box-shadow:0 0 0 1px rgba(0,212,146,.12),0 10px 30px -18px rgba(0,212,146,.7);
+}
+
+.topic-head{display:flex;align-items:center;gap:11px;margin-bottom:10px}
+.topic-icon{
+  width:34px;height:34px;border-radius:var(--r-sm);flex:none;display:grid;place-items:center;
+  background:rgba(255,255,255,.05);border:1px solid var(--line);
+}
+.topic-icon svg{width:17px;height:17px;stroke:var(--dim);fill:none;stroke-width:1.8;
+  stroke-linecap:round;stroke-linejoin:round}
+.topic.primary .topic-icon{background:rgba(0,212,146,.14);border-color:rgba(0,212,146,.34)}
+.topic.primary .topic-icon svg{stroke:var(--accent)}
+
+.topic-id{flex:1;min-width:0}
+.topic-id b{display:block;font-size:15px;font-weight:660;letter-spacing:-.01em}
+.topic-kicker{
+  display:block;font-size:10px;text-transform:uppercase;letter-spacing:.07em;
+  color:var(--faint);margin-top:2px;font-weight:650;
+}
+.topic.primary .topic-kicker{color:var(--accent)}
+
+/* Estado del permiso, a la derecha del titulo. */
+.topic-state{
+  flex:none;padding:3px 9px;border-radius:99px;font-size:10px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.05em;
+  background:rgba(255,255,255,.06);color:var(--dim);border:1px solid var(--line-strong);
+}
+.topic-state.ok{background:rgba(0,212,146,.14);color:var(--accent);border-color:rgba(0,212,146,.4)}
+.topic-state.bad{background:rgba(255,92,92,.12);color:#ff8f8f;border-color:rgba(255,92,92,.38)}
+
+.topic-copy{font-size:13px;color:var(--dim);line-height:1.5;margin:0 0 13px}
+.topic .note{font-size:12px;color:var(--faint);margin:9px 0 0;line-height:1.5}
+/* Ya concedido: el bloque deja de gritar y se queda como una confirmacion. */
+.topic.primary.done{
+  border-color:rgba(0,212,146,.22);background:rgba(0,212,146,.04);box-shadow:none;
+}
+
+.onboard-foot{margin-top:14px;text-align:center}
+.onboard-foot .btn{flex:none;width:100%}
+.onboard-foot .note{font-size:11.5px;color:var(--faint);margin:9px 0 0}
+
 /* Pasos de la guia de instalacion */
 .steps{margin:0;padding:0;list-style:none;counter-reset:paso}
 .steps+.steps{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
@@ -626,6 +696,16 @@ img{max-width:100%}
 .btn:active{transform:scale(.97)}
 .btn.danger{color:var(--err);border-color:rgba(255,92,92,.35);background:rgba(255,92,92,.08)}
 .btn.danger:hover{background:rgba(255,92,92,.16)}
+/* Accion principal de la ventana de bienvenida: solida, para que no compita
+   con ella ningun otro boton de la hoja. */
+.btn.primary{
+  background:var(--accent);border-color:var(--accent);color:#04140f;font-weight:700;
+}
+.btn.primary:hover{background:#1ae2a5;border-color:#1ae2a5}
+.btn.primary:disabled{opacity:.5;cursor:default;transform:none}
+.btn.ghost{background:transparent;border-color:var(--line);color:var(--faint);font-weight:600}
+.btn.ghost:hover{background:var(--surface-2);color:var(--dim);border-color:var(--line-strong)}
+.btn:disabled{cursor:default}
 .sheet input{
   width:100%;padding:12px 14px;font-size:16px;font-family:inherit;letter-spacing:.3em;
   text-align:center;border-radius:var(--r-md);border:1px solid var(--line-strong);
@@ -647,10 +727,10 @@ img{max-width:100%}
 @media (max-width:820px){
   .basic{gap:11px}
 }
-/* Solo en pantallas muy estrechas se apilan: en un movil normal (390 px) las
-   dos casillas y la bobina junto a su ficha caben de sobra en horizontal. */
+/* En pantallas muy estrechas el anillo se encoge un poco mas para que a la
+   columna de tiempos le quede sitio sin romper los valores en dos lineas. */
 @media (max-width:344px){
-  .tiles{grid-template-columns:1fr}
+  .ring{width:108px}
   .fil-hero{flex-direction:column;align-items:flex-start;text-align:left}
 }
 
@@ -831,7 +911,9 @@ img{max-width:100%}
         <h2>Estado de impresión <span class="tag" id="phase-tag"></span></h2>
         <div class="body">
 
-          <div class="ring-wrap">
+          <!-- Anillo a la izquierda y los dos tiempos apilados a su derecha,
+               centrados a la altura del porcentaje. -->
+          <div class="ring-row">
             <div class="ring">
               <svg viewBox="0 0 140 140" aria-hidden="true">
                 <circle class="track" cx="70" cy="70" r="60" fill="none" stroke-width="9"/>
@@ -849,22 +931,22 @@ img{max-width:100%}
                 <small id="ring-label">esperando datos</small>
               </div>
             </div>
-          </div>
 
-          <div class="tiles">
-            <div class="tile">
-              <div class="l">
-                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-                <span id="tile1-label">Restante</span>
+            <div class="tiles">
+              <div class="tile">
+                <div class="l">
+                  <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                  <span id="tile1-label">Restante</span>
+                </div>
+                <div class="v tnum" id="tile1-value">—</div>
               </div>
-              <div class="v tnum" id="tile1-value">—</div>
-            </div>
-            <div class="tile">
-              <div class="l">
-                <svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>
-                <span id="tile2-label">Termina</span>
+              <div class="tile">
+                <div class="l">
+                  <svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>
+                  <span id="tile2-label">Termina</span>
+                </div>
+                <div class="v tnum" id="tile2-value">—</div>
               </div>
-              <div class="v tnum" id="tile2-value">—</div>
             </div>
           </div>
 
@@ -936,21 +1018,58 @@ img{max-width:100%}
   </main>
 </div>
 
-<!-- ======================= Bienvenida / instalacion ======================= -->
+<!-- ======================= Bienvenida / instalacion =======================
+     Dos temas distintos y con distinto peso, no una lista de pasos: los
+     avisos son el motivo de existir de esta app y van primero, destacados;
+     instalar es opcional (salvo en iPhone) y va debajo, en tono menor.
+     ======================================================================= -->
 <div id="onboard" class="modal hidden">
-  <div class="sheet">
+  <div class="sheet onboard-sheet">
     <div class="sheet-head">
-      <h2>Sácale partido</h2>
+      <h2>Antes de empezar</h2>
       <button class="close" id="onboard-close" aria-label="Cerrar">
         <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
       </button>
     </div>
 
-    <div class="section" id="onboard-install">
-      <h3>1 · Instala la app</h3>
-      <p class="note" style="margin:0 0 12px">
-        Instalada se abre a pantalla completa, con su icono, y es la única forma de recibir
-        avisos en iPhone.
+    <!-- ---------- Tema 1: avisos (prioritario) ---------- -->
+    <section class="topic primary" id="onboard-notify-topic">
+      <div class="topic-head">
+        <span class="topic-icon">
+          <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+            <path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+        </span>
+        <div class="topic-id">
+          <b>Avisos</b>
+          <span class="topic-kicker">Imprescindible</span>
+        </div>
+        <span class="topic-state" id="onboard-notify-state">Sin activar</span>
+      </div>
+      <p class="topic-copy">
+        Es para lo que sirve esta app: te avisa cuando la impresión termina, cuando se ha
+        enfriado y cuando ya puedes retirar la pieza. Sin este permiso el móvil no puede
+        avisarte con la app cerrada, que es justo cuando hace falta.
+      </p>
+      <div class="btn-row">
+        <button class="btn primary" id="onboard-notify">Activar avisos</button>
+      </div>
+      <p class="note" id="onboard-notify-note"></p>
+    </section>
+
+    <!-- ---------- Tema 2: instalacion (secundario) ---------- -->
+    <section class="topic" id="onboard-install">
+      <div class="topic-head">
+        <span class="topic-icon">
+          <svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2.5"/>
+            <path d="M11 18h2"/></svg>
+        </span>
+        <div class="topic-id">
+          <b>Instalación</b>
+          <span class="topic-kicker" id="onboard-install-kicker">Recomendado</span>
+        </div>
+      </div>
+      <p class="topic-copy" id="onboard-install-copy">
+        Se abre a pantalla completa y con su propio icono, como una app más.
       </p>
       <ol class="steps" id="steps-android">
         <li><b>Android · Chrome</b></li>
@@ -967,22 +1086,11 @@ img{max-width:100%}
       <div class="btn-row" style="margin-top:12px">
         <button class="btn" id="onboard-install-btn" hidden>Instalar ahora</button>
       </div>
-    </div>
+    </section>
 
-    <div class="section">
-      <h3>2 · Permite los avisos</h3>
-      <p class="note" style="margin:0 0 12px">
-        Para que te avise cuando la impresión se enfríe y cuando ya puedas retirarla, aunque
-        tengas la app cerrada.
-      </p>
-      <div class="btn-row">
-        <button class="btn" id="onboard-notify">Activar avisos</button>
-      </div>
-      <p class="note" id="onboard-notify-note"></p>
-    </div>
-
-    <div class="btn-row">
-      <button class="btn" id="onboard-dismiss">No volver a mostrar</button>
+    <div class="onboard-foot">
+      <button class="btn ghost" id="onboard-dismiss">Ahora no</button>
+      <p class="note" id="onboard-foot-note"></p>
     </div>
   </div>
 </div>
@@ -1440,6 +1548,76 @@ function filamentItems(s) {
 let filSignature = null;
 let filCells = [];
 
+/**
+ * Version legible del color de un filamento, para usarla como tinta.
+ *
+ * El color real de la bobina sirve para el disco —ahi tiene que ser exacto—
+ * pero no para texto ni bordes: un PLA negro o azul marino sobre el panel
+ * oscuro desaparecia por completo, y el cartel de "en uso" no se leia. Aqui se
+ * conserva el tono y se le sube la luminosidad hasta que alcanza contraste
+ * suficiente contra el fondo del panel.
+ *
+ * @param {string} hex #RRGGBB
+ * @returns {string} el mismo color aclarado lo justo
+ */
+function legibleInk(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || ''));
+  if (!m) return 'var(--accent)';
+  const n = parseInt(m[1], 16);
+  const rgb = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+
+  // Luminancia relativa y contraste segun WCAG.
+  const lum = ([r, g, b]) => {
+    const f = (c) => {
+      const s = c / 255;
+      return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+    };
+    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+  };
+  // Fondo contra el que se lee: --surface-2 (#171e2a).
+  const bg = lum([0x17, 0x1e, 0x2a]);
+  const ratio = (c) => {
+    const a = lum(c);
+    return (Math.max(a, bg) + 0.05) / (Math.min(a, bg) + 0.05);
+  };
+
+  if (ratio(rgb) >= 4.5) return `#${m[1]}`;
+
+  // RGB -> HSL, subir L en pasos pequenos y volver. Se prefiere esto a mezclar
+  // con blanco porque mezclar desatura y acaba lavando todos los colores hasta
+  // dejarlos indistinguibles entre si.
+  const [r, g, b] = rgb.map((c) => c / 255);
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const l0 = (max + min) / 2;
+  const d = max - min;
+  const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l0 - 1));
+  let h = 0;
+  if (d !== 0) {
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+    if (h < 0) h += 360;
+  }
+
+  const toRgb = (hh, ss, ll) => {
+    const c = (1 - Math.abs(2 * ll - 1)) * ss;
+    const x = c * (1 - Math.abs(((hh / 60) % 2) - 1));
+    const mm = ll - c / 2;
+    const [p, q, t] = hh < 60 ? [c, x, 0] : hh < 120 ? [x, c, 0] : hh < 180 ? [0, c, x]
+      : hh < 240 ? [0, x, c] : hh < 300 ? [x, 0, c] : [c, 0, x];
+    return [p, q, t].map((v) => Math.round((v + mm) * 255));
+  };
+
+  for (let l = l0; l <= 0.94; l += 0.02) {
+    const out = toRgb(h, s, l);
+    if (ratio(out) >= 4.5) {
+      return `#${out.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+    }
+  }
+  return '#e9eef5';
+}
+
 function buildFilamentGrid(items) {
   const grid = $('fil-grid');
   if (!items.length) {
@@ -1449,8 +1627,11 @@ function buildFilamentGrid(items) {
   }
   grid.innerHTML = items
     .map(
+      // --c es el color de verdad de la bobina y solo lo usa el disco; --ci es
+      // su version legible, para todo lo que sea texto o borde.
       (i) => `<div class="fil-cell${i.empty ? ' void' : ''}${i.wide ? ' wide' : ''}"
-                   style="--c:${escapeAttr(i.color)}" title="${escapeAttr(i.label)}">
+                   style="--c:${escapeAttr(i.color)};--ci:${escapeAttr(legibleInk(i.color))}"
+                   title="${escapeAttr(i.label)}">
         <span class="use">en uso</span>
         <span class="disc"></span>
         <div class="t"><b>${escapeHtml(i.label)}</b><small>${escapeHtml(i.loc)}</small></div>
@@ -2214,15 +2395,22 @@ function notifyBrowser(e) {
 // justo lo que interesa, porque instalar y dar permisos tambien lo es.
 // ===========================================================================
 
+// La ventana insiste hasta que los avisos esten concedidos: es el unico
+// permiso sin el cual la app no cumple su funcion. Lo que se puede hacer es
+// cerrarla, y solo tres veces.
+//
+// El recuento vive en localStorage, no en el servidor: asi sobrevive a los
+// reinicios y redespliegues de Render —que en el plan gratis se llevan por
+// delante cualquier estado guardado en disco— y ademas es por dispositivo,
+// que es lo que tiene sentido para un permiso que tambien es por dispositivo.
 const ONBOARD_KEY = 'bambu.onboard';
-const ONBOARD_MAX = 3;
-const ONBOARD_GAP_MS = 24 * 60 * 60 * 1000;
+const ONBOARD_MAX_CLOSES = 3;
 
 function onboardState() {
   try {
-    return { count: 0, last: 0, done: false, ...JSON.parse(localStorage.getItem(ONBOARD_KEY) || '{}') };
+    return { closes: 0, done: false, ...JSON.parse(localStorage.getItem(ONBOARD_KEY) || '{}') };
   } catch {
-    return { count: 0, last: 0, done: false };
+    return { closes: 0, done: false };
   }
 }
 
@@ -2230,6 +2418,26 @@ function saveOnboard(patch) {
   try {
     localStorage.setItem(ONBOARD_KEY, JSON.stringify({ ...onboardState(), ...patch }));
   } catch { /* modo privado: se mostrara alguna vez de mas, sin mas consecuencia */ }
+}
+
+/** True cuando el permiso de avisos ya esta dado en este dispositivo. */
+function notifyGranted() {
+  return CAN_NOTIFY && Notification.permission === 'granted';
+}
+
+/**
+ * True si en este momento el permiso es inalcanzable: bloqueado en los
+ * ajustes del navegador, no soportado, o iPhone sin instalar la app.
+ *
+ * Importa porque el tope de tres cierres solo puede aplicarse si al usuario le
+ * queda alguna forma de salir de la ventana concediendo el permiso. Si no la
+ * hay, quitarle tambien el boton de cerrar dejaria la app inservible detras de
+ * un modal que no se puede quitar de ninguna manera.
+ */
+function notifyUnreachable() {
+  if (!CAN_NOTIFY) return true;
+  if (Notification.permission === 'denied') return true;
+  return IS_IOS && !IS_STANDALONE;
 }
 
 /** Evento que Chrome dispara cuando la PWA se puede instalar de verdad. */
@@ -2241,15 +2449,36 @@ addEventListener('beforeinstallprompt', (e) => {
   if (btn) btn.hidden = false;
 });
 addEventListener('appinstalled', () => {
-  saveOnboard({ done: true });
-  $('onboard').classList.add('hidden');
+  paintOnboard();
 });
 
 /**
  * Abre la guia. Con `manual` se salta todas las condiciones: es la que usa el
  * boton del panel de administracion, que debe funcionar siempre.
  */
+let onboardManual = false;
+
 function showOnboarding({ manual = false } = {}) {
+  onboardManual = manual;
+  paintOnboard();
+  $('onboard').classList.remove('hidden');
+}
+
+/**
+ * La ventana sale en cada bienvenida mientras falten los avisos. Ya no hay
+ * espera de 24 h ni tope de aperturas: lo que se limita es cuantas veces se
+ * puede cerrar sin resolverlo.
+ */
+function maybeShowOnboarding() {
+  if (notifyGranted()) return;
+  // Concedido de nada sirve insistir en un navegador que no puede avisar y en
+  // el que ademas ya se agotaron los cierres: ahi la ventana ya no aporta.
+  if (onboardState().done) return;
+  showOnboarding();
+}
+
+/** Pinta los dos bloques y el pie segun el estado real del dispositivo. */
+function paintOnboard() {
   // Cada plataforma ve solo sus pasos, para no convertir la ayuda en un muro
   // de texto. En escritorio se muestran los dos.
   $('steps-android').classList.toggle('hidden', IS_IOS);
@@ -2257,50 +2486,122 @@ function showOnboarding({ manual = false } = {}) {
   // Ya instalada no hay nada que explicar sobre instalar.
   $('onboard-install').classList.toggle('hidden', IS_STANDALONE);
 
+  // En iPhone instalar no es un extra: sin instalar no hay avisos posibles.
+  // El bloque lo dice con su propia etiqueta en vez de esconderlo en el texto.
+  if (IS_IOS && !IS_STANDALONE) {
+    $('onboard-install-kicker').textContent = 'Obligatorio en iPhone';
+    $('onboard-install-copy').textContent =
+      'En iPhone y iPad, Safari solo permite avisos a las apps añadidas a la pantalla de '
+      + 'inicio. Sin instalarla no hay forma de activarlos.';
+  } else {
+    $('onboard-install-kicker').textContent = 'Recomendado';
+    $('onboard-install-copy').textContent =
+      'Se abre a pantalla completa y con su propio icono, como una app más.';
+  }
+
   paintOnboardNotify();
-  $('onboard').classList.remove('hidden');
-  if (!manual) saveOnboard({ count: onboardState().count + 1, last: Date.now() });
-}
-
-function maybeShowOnboarding() {
-  const st = onboardState();
-  if (st.done || st.count >= ONBOARD_MAX) return;
-  if (Date.now() - st.last < ONBOARD_GAP_MS) return;
-
-  // Instalada ya no se explica como instalar, pero si aun faltan los permisos
-  // de aviso la guia sigue teniendo algo que contar: se abre solo con el
-  // apartado que queda pendiente.
-  //
-  // Lo que NO se hace aqui es marcar `done` por estar instalada: la PWA y el
-  // navegador comparten localStorage en el mismo origen, asi que eso mataba la
-  // guia tambien en el navegador tras abrir la app una sola vez. `done` queda
-  // reservado a la instalacion real y al "no volver a mostrar".
-  if (IS_STANDALONE && (!CAN_NOTIFY || Notification.permission === 'granted')) return;
-
-  showOnboarding();
+  paintOnboardFoot();
 }
 
 function paintOnboardNotify() {
   const note = $('onboard-notify-note');
   const btn = $('onboard-notify');
+  const state = $('onboard-notify-state');
+  const topic = $('onboard-notify-topic');
+
+  const set = (text, cls, done) => {
+    state.textContent = text;
+    state.className = `topic-state${cls ? ` ${cls}` : ''}`;
+    topic.classList.toggle('done', Boolean(done));
+  };
+
   if (!CAN_NOTIFY) {
+    set('No disponible', 'bad');
     note.textContent = 'Este navegador no admite avisos.';
     btn.disabled = true;
     return;
   }
   if (Notification.permission === 'granted') {
-    note.textContent = 'Avisos ya concedidos en este dispositivo ✓';
+    set('Activados', 'ok', true);
+    note.textContent = 'Avisos concedidos en este dispositivo ✓';
     btn.disabled = true;
+    btn.textContent = 'Listo';
   } else if (Notification.permission === 'denied') {
+    set('Bloqueados', 'bad');
     note.textContent =
-      'Están bloqueados. Actívalos en los ajustes del navegador para este sitio.';
+      'Están bloqueados. Actívalos en los ajustes del navegador para este sitio y vuelve a entrar.';
     btn.disabled = true;
   } else {
+    set('Sin activar');
     note.textContent = IS_IOS && !IS_STANDALONE
       ? 'En iPhone hay que instalar la app antes de poder activarlos.'
       : '';
-    btn.disabled = false;
+    btn.disabled = Boolean(IS_IOS && !IS_STANDALONE);
   }
+}
+
+/**
+ * El pie lleva la cuenta de los cierres. Cuando se agotan, el boton de cerrar
+ * desaparece — salvo que conceder el permiso sea imposible ahora mismo, en
+ * cuyo caso seguir bloqueando la ventana solo dejaria la app inutilizable.
+ */
+function paintOnboardFoot() {
+  const btn = $('onboard-dismiss');
+  const note = $('onboard-foot-note');
+  const close = $('onboard-close');
+
+  // Abierta a mano desde administracion: siempre se puede cerrar y no gasta
+  // cierres. El usuario la ha pedido el, no se le esta insistiendo.
+  if (onboardManual || notifyGranted()) {
+    btn.hidden = false;
+    btn.textContent = 'Cerrar';
+    close.hidden = false;
+    note.textContent = '';
+    return;
+  }
+
+  const left = Math.max(0, ONBOARD_MAX_CLOSES - onboardState().closes);
+  const escapable = left > 0 || notifyUnreachable();
+
+  btn.hidden = !escapable;
+  close.hidden = !escapable;
+
+  if (left > 0) {
+    btn.textContent = 'Ahora no';
+    note.textContent = left === 1
+      ? 'Podrás posponerlo una vez más.'
+      : `Podrás posponerlo ${left} veces más.`;
+  } else if (notifyUnreachable()) {
+    // Sin salida por la via del permiso: se deja cerrar igualmente.
+    btn.textContent = 'Cerrar';
+    note.textContent = 'Resuélvelo cuando puedas: sin avisos la app no te avisará de nada.';
+  } else {
+    note.textContent = 'Activa los avisos para continuar.';
+  }
+}
+
+/**
+ * Cierra la ventana gastando un cierre. Devuelve false si ya no quedaban, en
+ * cuyo caso no se cierra.
+ */
+function closeOnboarding() {
+  if (onboardManual || notifyGranted()) {
+    $('onboard').classList.add('hidden');
+    return true;
+  }
+  const st = onboardState();
+  const left = ONBOARD_MAX_CLOSES - st.closes;
+  if (left <= 0 && !notifyUnreachable()) {
+    paintOnboardFoot();
+    return false;
+  }
+  const closes = st.closes + 1;
+  // Agotados los cierres y con el permiso fuera de alcance, se deja de
+  // insistir en las siguientes visitas: ya no hay nada que el usuario pueda
+  // hacer desde aqui.
+  saveOnboard({ closes, done: closes >= ONBOARD_MAX_CLOSES && notifyUnreachable() });
+  $('onboard').classList.add('hidden');
+  return true;
 }
 
 // Entrada manual: funciona siempre, aunque ya se haya visto 3 veces, se haya
@@ -2310,25 +2611,26 @@ $('btn-guide').onclick = () => {
   showOnboarding({ manual: true });
 };
 
-$('onboard-close').onclick = () => $('onboard').classList.add('hidden');
-$('onboard').onclick = (e) => { if (e.target === $('onboard')) $('onboard').classList.add('hidden'); };
-$('onboard-dismiss').onclick = () => {
-  saveOnboard({ done: true });
-  $('onboard').classList.add('hidden');
-};
+$('onboard-close').onclick = closeOnboarding;
+$('onboard-dismiss').onclick = closeOnboarding;
+// Tocar fuera cuenta como cerrar, con las mismas reglas: si no, seria una
+// puerta trasera para saltarse el tope de tres.
+$('onboard').onclick = (e) => { if (e.target === $('onboard')) closeOnboarding(); };
+
 $('onboard-install-btn').onclick = async () => {
   if (!installPrompt) return;
   installPrompt.prompt();
-  const { outcome } = await installPrompt.userChoice;
+  await installPrompt.userChoice;
   installPrompt = null;
-  if (outcome === 'accepted') saveOnboard({ done: true });
   $('onboard-install-btn').hidden = true;
 };
 $('onboard-notify').onclick = async () => {
   const r = await ensurePush({ interactive: true });
   syncNotifyButton();
-  paintOnboardNotify();
+  paintOnboard();
   if (!r.ok) $('onboard-notify-note').textContent = r.detail;
+  // Concedido: la ventana ya no tiene razon de ser y se quita sola.
+  if (notifyGranted()) setTimeout(() => $('onboard').classList.add('hidden'), 900);
 };
 
 // ===========================================================================
