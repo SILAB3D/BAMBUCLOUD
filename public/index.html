@@ -313,9 +313,12 @@ button.primary:active{transform:scale(.98)}
 .status-card.ph-printing::after{animation:sweep 5.5s ease-in-out infinite;opacity:1}
 
 /* Anillo a la izquierda + columna de tiempos a la derecha, centrados entre si
-   para que los dos valores queden a la altura del porcentaje. */
-.ring-row{display:flex;align-items:center;gap:clamp(12px,3vw,20px);padding:2px 0 10px}
-.ring{position:relative;width:clamp(124px,30vw,178px);aspect-ratio:1;flex:none}
+   para que los dos valores queden a la altura del porcentaje.
+   El anillo manda: se lleva el ancho que necesita y las casillas ocupan lo que
+   queda. Al reves —casillas holgadas y anillo con lo que sobra— el grafico se
+   quedaba diminuto y dos cajas medio vacias se comian el panel. */
+.ring-row{display:flex;align-items:center;gap:clamp(10px,2.4vw,16px);padding:2px 0 10px}
+.ring{position:relative;width:clamp(160px,48vw,240px);aspect-ratio:1;flex:none}
 .ring svg{width:100%;height:100%;display:block;overflow:visible}
 .ring .track{stroke:rgba(255,255,255,.06)}
 .ring .arc{stroke:url(#g-main);filter:drop-shadow(0 0 8px rgba(0,212,146,.45));
@@ -331,27 +334,28 @@ button.primary:active{transform:scale(.98)}
 .ph-printing .head,.ph-cooling .head{animation:throb 2s ease-in-out infinite}
 .ring .readout{position:absolute;inset:0;display:flex;flex-direction:column;
   align-items:center;justify-content:center;pointer-events:none;text-align:center;padding:0 12%}
-.ring .readout b{font-size:clamp(28px,6vw,44px);font-weight:660;line-height:1;
+.ring .readout b{font-size:clamp(33px,7.6vw,52px);font-weight:660;line-height:1;
   letter-spacing:-.035em}
 .ring .readout b i{font-size:.42em;font-style:normal;color:var(--dim);margin-left:2px}
-.ring .readout small{font-size:clamp(9.5px,1.4vw,11px);color:var(--faint);margin-top:6px;
+.ring .readout small{font-size:clamp(10px,1.6vw,11.5px);color:var(--faint);margin-top:7px;
   letter-spacing:.04em}
-.ph-ready .readout b{font-size:clamp(21px,4.2vw,31px);color:var(--accent)}
+.ph-ready .readout b{font-size:clamp(24px,5vw,36px);color:var(--accent)}
 .ph-ready .readout small{color:var(--dim)}
 
-/* Los dos tiempos, uno debajo del otro y alineados a la derecha. */
-.tiles{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px}
+/* Los dos tiempos, uno debajo del otro y alineados a la derecha. Ajustados al
+   contenido: solo tienen que sostener una etiqueta y un valor corto. */
+.tiles{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}
 .tile{
   background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-md);
-  padding:10px 12px;display:flex;flex-direction:column;justify-content:center;
+  padding:8px 11px;display:flex;flex-direction:column;justify-content:center;
   align-items:flex-end;text-align:right;
 }
-.tile .l{display:flex;align-items:center;justify-content:flex-end;gap:5px;font-size:10px;
-  text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin-bottom:4px;
+.tile .l{display:flex;align-items:center;justify-content:flex-end;gap:4px;font-size:9.5px;
+  text-transform:uppercase;letter-spacing:.05em;color:var(--faint);margin-bottom:2px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .tile .l svg{width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:2;
   stroke-linecap:round;stroke-linejoin:round;flex:none}
-.tile .v{font-size:clamp(16px,2.8vw,21px);font-weight:650;letter-spacing:-.025em;
+.tile .v{font-size:clamp(15px,2.5vw,19px);font-weight:650;letter-spacing:-.025em;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 
 .bar-head{display:flex;justify-content:space-between;align-items:baseline;
@@ -730,7 +734,7 @@ button.primary:active{transform:scale(.98)}
 /* En pantallas muy estrechas el anillo se encoge un poco mas para que a la
    columna de tiempos le quede sitio sin romper los valores en dos lineas. */
 @media (max-width:344px){
-  .ring{width:108px}
+  .ring{width:144px}
   .fil-hero{flex-direction:column;align-items:flex-start;text-align:left}
 }
 
