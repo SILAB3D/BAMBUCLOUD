@@ -56,12 +56,20 @@ export const TRIGGERS = [
 ];
 
 /**
- * Lo unico que se avisa sin que nadie lo pida: las dos etapas que ocurren
- * cuando ya no hay nadie mirando la pantalla. El resto (inicio, pausa, HMS...)
- * pasa delante de quien esta al pie de la maquina, asi que llega apagado y se
- * enciende desde el panel de administracion.
+ * Todo llega apagado, a proposito.
+ *
+ * En el plan gratuito de Render no hay disco: cada reinicio del servicio se
+ * lleva por delante `bambu-state.json` y con el los ajustes, asi que lo que
+ * este aqui es lo que habra tras cada redespliegue o cada vez que el servicio
+ * despierte de cero. Con la lista vacia, el silencio es el punto de partida y
+ * los avisos se encienden a demanda desde el panel de administracion; al reves
+ * —arrancar con `cooling`/`ready` encendidos— cualquier reinicio reactivaba
+ * solo unos avisos que quiza se habian apagado hace un minuto.
+ *
+ * Con un disco persistente montado (ver render.yaml) esto solo decide el
+ * primer arranque; a partir de ahi manda lo guardado.
  */
-const ON_BY_DEFAULT = new Set(['cooling', 'ready']);
+const ON_BY_DEFAULT = new Set();
 
 export const DEFAULT_SETTINGS = {
   enabled: true,
@@ -249,7 +257,12 @@ export class Notifier extends EventEmitter {
    * Telegram, webhooks y Web Push respeta los interruptores del panel.
    */
   fire(type, text, meta = {}) {
-    const event = { type, text, at: Date.now(), ...meta };
+    const allowed = this.allows(type);
+    // `notify` viaja hasta el navegador: es lo que decide si ademas de entrar
+    // en el historial el evento hace saltar un aviso en pantalla. Sin esto, un
+    // tipo apagado desde el panel seguia avisando en las pestanas abiertas,
+    // que es justo lo que el interruptor dice que no debe pasar.
+    const event = { type, text, at: Date.now(), notify: allowed, ...meta };
 
     this.history.unshift(event);
     this.history = this._prune(this.history);
@@ -257,7 +270,7 @@ export class Notifier extends EventEmitter {
 
     this.emit('notification', event);
 
-    if (!this.allows(type)) return event;
+    if (!allowed) return event;
     this.send(text, { ...meta, type }).catch((err) => this.emit('error', err));
     return event;
   }

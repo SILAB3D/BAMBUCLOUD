@@ -618,6 +618,58 @@ button.primary:active{transform:scale(.98)}
 .sw[aria-checked="true"]::after{transform:translateX(19px);background:var(--accent)}
 .sw[disabled]{opacity:.4;cursor:not-allowed}
 
+/* --------------------------------------------------------------------------
+   Lista de dispositivos suscritos
+   -------------------------------------------------------------------------- */
+.dev{display:flex;align-items:center;gap:10px;padding:9px 0}
+.dev+.dev{border-top:1px solid var(--line)}
+.dev .txt{flex:1;min-width:0}
+.dev .txt b{display:block;font-size:13px;font-weight:600;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dev .txt small{display:block;font-size:11px;color:var(--faint);margin-top:2px}
+/* El dispositivo desde el que se mira el panel, para no silenciarlo por error.
+   Va en la linea secundaria y no junto al nombre: ahi el `text-overflow` de
+   los nombres largos se lo comeria en una pantalla estrecha. */
+.dev.is-me .txt small::before{
+  content:"Este dispositivo · ";color:var(--accent);font-weight:700;
+}
+.dev .kill{
+  width:27px;height:27px;flex:none;border-radius:8px;cursor:pointer;display:grid;place-items:center;
+  border:1px solid var(--line);background:var(--surface);
+}
+.dev .kill svg{width:13px;height:13px;stroke:var(--faint);fill:none;stroke-width:1.9;
+  stroke-linecap:round}
+.dev .kill:hover{border-color:rgba(255,92,92,.45)}
+.dev .kill:hover svg{stroke:#ff8f8f}
+
+/* --------------------------------------------------------------------------
+   Diagnostico: por que no se han podido activar los avisos
+   -------------------------------------------------------------------------- */
+.cause{
+  border:1px solid var(--line);border-radius:var(--r-md);padding:12px;
+  margin-bottom:9px;background:var(--surface-2);
+}
+/* La causa que encaja con lo que ha fallado va marcada: la lista completa
+   sirve de repaso, pero lo util es saber por donde empezar. */
+.cause.likely{
+  border-color:rgba(245,165,36,.42);
+  background:linear-gradient(180deg,rgba(245,165,36,.10),rgba(245,165,36,.02));
+}
+.cause b{display:block;font-size:13.5px;font-weight:640;margin-bottom:5px}
+.cause.likely b::before{
+  content:"Más probable";display:inline-block;margin-right:8px;padding:1px 6px;
+  border-radius:99px;font-size:9.5px;font-weight:700;text-transform:uppercase;
+  letter-spacing:.04em;color:#f5a524;background:rgba(245,165,36,.14);
+  border:1px solid rgba(245,165,36,.38);vertical-align:1px;
+}
+.cause p{margin:0;font-size:12.5px;color:var(--dim);line-height:1.55}
+/* Motivo tecnico exacto que devolvio el navegador. */
+.cause-detail{
+  font-size:12px;color:var(--faint);line-height:1.5;margin:0 0 13px;
+  padding:10px 12px;border-radius:var(--r-sm);
+  background:rgba(255,92,92,.07);border:1px solid rgba(255,92,92,.24);
+}
+
 /* ==========================================================================
    Ventana de bienvenida
    ==========================================================================
@@ -1145,6 +1197,13 @@ button.primary:active{transform:scale(.98)}
         </div>
       </div>
 
+      <!-- Un interruptor por dispositivo suscrito; se rellena desde el servidor. -->
+      <div class="section">
+        <h3>Dispositivos</h3>
+        <div id="device-list"></div>
+        <p class="note" id="device-note">Cargando…</p>
+      </div>
+
       <div class="section">
         <h3>Cuenta de Bambu Lab</h3>
         <p class="note" id="account-note" style="margin:0 0 11px"></p>
@@ -1161,6 +1220,23 @@ button.primary:active{transform:scale(.98)}
       <div class="btn-row">
         <button class="btn" id="btn-dash-logout">Salir del dashboard</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Por que no se han podido activar los avisos =============== -->
+<div id="push-help" class="modal hidden">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h2>No se han podido activar</h2>
+      <button class="close" id="push-help-close" aria-label="Cerrar">
+        <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <p class="cause-detail" id="push-help-detail"></p>
+    <div id="push-help-list"></div>
+    <div class="btn-row" style="margin-top:4px">
+      <button class="btn" id="push-help-retry">Volver a intentarlo</button>
     </div>
   </div>
 </div>
@@ -1330,6 +1406,9 @@ function renderOrb(s, cycle) {
   else if (s?.printing)             { tone = 'run';  icon = ICONS.play;  label = 'Imprimiendo'; }
   else if (cycle?.phase === 'cooling') { tone = 'cool'; icon = ICONS.snow; label = 'Enfriando'; }
   else if (cycle?.phase === 'ready')   { tone = 'done'; icon = ICONS.box;  label = 'Lista para retirar'; }
+  // Recogida: la maquina sigue diciendo FINISH, pero ya no hay nada terminado
+  // que anunciar — esta libre esperando el siguiente trabajo.
+  else if (cycle?.collected)        { tone = '';     icon = ICONS.idle;  label = 'Lista para imprimir'; }
   else if (s?.state === 'FINISH')   { tone = 'done'; icon = ICONS.check; label = 'Terminada'; }
 
   const orb = $('orb');
@@ -1368,18 +1447,45 @@ function renderStatusPanel() {
   const cls = 'card status-card ph-' + phase;
   if (card.className !== cls) card.className = cls;
 
+  // Tras pulsar "Ya la he retirado" la impresora sigue reportando FINISH al
+  // 100 %, pero eso ya es historia: lo que hay delante es una maquina libre.
+  const collected = phase === 'idle' && Boolean(cycle?.collected);
+
   const TAGS = {
     printing: 'en curso',
     cooling: 'enfriando',
     ready: 'lista para retirar',
-    idle: 'en reposo',
+    idle: collected ? 'lista para imprimir' : 'en reposo',
   };
   $('phase-tag').textContent = TAGS[phase];
   $('collect').classList.toggle('hidden', phase !== 'ready');
 
   if (phase === 'cooling') return renderCooling(cycle, s);
   if (phase === 'ready') return renderReady(cycle);
+  if (collected) return renderFree();
   return renderPrinting(s);
+}
+
+/**
+ * La pieza ya se ha retirado: ni porcentaje ni capas de un trabajo que ya no
+ * existe. El anillo se vacia y el panel dice lo unico que queda por decir, que
+ * la impresora esta libre.
+ */
+function renderFree() {
+  setRing(null, 'lista para imprimir', { text: 'Libre', tab: null });
+
+  $('tile1-label').textContent = 'Restante';
+  $('tile1-value').textContent = '—';
+  $('tile2-label').textContent = 'Termina';
+  $('tile2-value').textContent = '—';
+
+  $('bar-label').textContent = 'Capas';
+  $('bar-now').textContent = '—';
+  $('bar-total').textContent = '/ —';
+  $('bar-fill').style.width = '0%';
+
+  $('job').textContent = 'Sin trabajo activo';
+  $('stage-line').classList.add('hidden');
 }
 
 function renderPrinting(s) {
@@ -2058,6 +2164,12 @@ function connectWs() {
       renderStatusPanel();
     }
     else if (type === 'settings') { settings = payload; paintSettings(); }
+    else if (type === 'devices') {
+      pushConfig = { ...pushConfig, ...(payload.push || {}) };
+      // Solo con el panel delante: fuera de el la lista no se ve y pintarla
+      // seria trabajo para nadie.
+      if (adminPanelOpen()) renderDevices(payload.devices || []);
+    }
     else if (type === 'bambu-logout') { lastState = null; lastDataAt = null; paintSync(); }
     else if (type === 'camera') { lastCameraAt = payload.at; refreshCamera(); }
     else if (type === 'notification') { pushFeed(payload); notifyBrowser(payload); }
@@ -2369,7 +2481,9 @@ async function ensurePush({ interactive = false } = {}) {
     const res = await fetch('/api/push/subscribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ subscription: sub.toJSON() }),
+      // El nombre del dispositivo lo compone el servidor con el user-agent de
+      // la cabecera; desde aqui solo va lo que esa cabecera no cuenta.
+      body: JSON.stringify({ subscription: sub.toJSON(), info: { standalone: IS_STANDALONE } }),
     });
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
@@ -2377,6 +2491,8 @@ async function ensurePush({ interactive = false } = {}) {
     }
     const j = await res.json().catch(() => ({}));
     if (j.count != null) pushConfig.devices = j.count;
+    // Para poder senalar cual de la lista es este, y avisar antes de silenciarlo.
+    if (j.id) myDeviceId = j.id;
     pushState = { ok: true, reason: 'ok', detail: 'Este dispositivo está suscrito.' };
     return pushState;
   } catch (err) {
@@ -2385,6 +2501,167 @@ async function ensurePush({ interactive = false } = {}) {
       ? 'En iPhone hay que añadir la app a la pantalla de inicio antes de activar los avisos.'
       : `No se pudo suscribir: ${err.message}`);
   }
+}
+
+// ===========================================================================
+// Diagnostico: por que no se han podido activar los avisos
+//
+// `ensurePush` sabe en que paso exacto se rompio, pero ese motivo suelto ("no
+// se concedio el permiso") no le dice a nadie que hacer. Cuando el usuario
+// pulsa un boton para activar los avisos y no sale, se abre esta ventana con
+// las causas que encajan, la mas probable marcada primero.
+// ===========================================================================
+
+/**
+ * Navegacion privada, hasta donde se puede saber.
+ *
+ * No hay forma limpia de detectarla y los navegadores lo esconden a proposito,
+ * asi que esto son indicios: en modo privado Chrome recorta la cuota de disco
+ * a una fraccion de la normal, y Firefox directamente no da Service Worker.
+ * Solo se usa para ordenar la lista de causas, nunca para bloquear nada.
+ */
+async function looksPrivate() {
+  // Sin Service Worker pero con HTTPS y un navegador moderno: el caso tipico
+  // es una ventana privada de Firefox.
+  if (location.protocol === 'https:' && !('serviceWorker' in navigator)) return true;
+  try {
+    const { quota } = (await navigator.storage?.estimate?.()) || {};
+    if (quota && quota < 300 * 1024 * 1024) return true;
+  } catch { /* el navegador no lo cuenta: nos quedamos sin este indicio */ }
+  return false;
+}
+
+/**
+ * Construye la lista de causas para el estado devuelto por `ensurePush`.
+ *
+ * @param {{reason:string, detail:string}} state
+ * @param {boolean} priv indicio de navegacion privada
+ * @returns {Array<{title:string, text:string, likely:boolean}>}
+ */
+function pushCauses(state, priv) {
+  const reason = state.reason;
+  const causes = [];
+  const add = (title, text, likely = false) => causes.push({ title, text, likely });
+
+  if (!CAN_NOTIFY || !CAN_PUSH) {
+    add(
+      'Este navegador no admite avisos',
+      'No expone la API de notificaciones push. Prueba con Chrome, Edge, Firefox o Safari '
+        + 'actualizados; en iPhone y iPad, solo funciona con la app añadida a la pantalla de inicio.',
+      true,
+    );
+  }
+
+  if ((CAN_NOTIFY && Notification.permission === 'denied') || reason === 'denied') {
+    add(
+      'Los avisos están bloqueados para este sitio',
+      IS_IOS
+        ? 'En iPhone: Ajustes → Notificaciones → busca esta app y activa "Permitir notificaciones". '
+          + 'Si la abriste en Safari, hazlo desde el icono de la pantalla de inicio.'
+        : 'Toca el candado (o el icono de ajustes) a la izquierda de la dirección web, entra en '
+          + '"Permisos" y pon las notificaciones en "Permitir". Después recarga la página. '
+          + 'Si ya rechazaste el aviso una vez, el navegador no vuelve a preguntar por su cuenta.',
+      true,
+    );
+  }
+
+  if (IS_IOS && !IS_STANDALONE) {
+    add(
+      'En iPhone hay que instalar la app primero',
+      'Safari solo permite avisos a las webs añadidas a la pantalla de inicio. Pulsa el botón de '
+        + 'compartir, elige "Añadir a pantalla de inicio" y activa los avisos desde el icono nuevo.',
+      reason !== 'denied',
+    );
+  }
+
+  if (priv || reason === 'unsupported' || reason === 'sw') {
+    add(
+      'Estás en una ventana de incógnito o privada',
+      'En modo privado la mayoría de navegadores desactivan el Service Worker, que es lo que '
+        + 'recibe los avisos con la app cerrada. Abre la web en una ventana normal.',
+      priv && reason !== 'denied',
+    );
+  }
+
+  if (location.protocol !== 'https:') {
+    add(
+      'La conexión no es HTTPS',
+      'Los avisos solo funcionan sobre HTTPS. Estás entrando por '
+        + `${location.protocol}//${location.host}: usa el dominio, no la IP de la red local.`,
+      true,
+    );
+  }
+
+  if (reason === 'server') {
+    add(
+      'El servidor no tiene las claves de envío',
+      'Faltan VAPID_PUBLIC_KEY y VAPID_PRIVATE_KEY en la configuración del servidor. Sin ellas '
+        + 'los avisos solo aparecen con la web abierta. Se generan con: npm run vapid',
+      true,
+    );
+  }
+
+  // Estas dos no dependen de nada detectable, pero son el motivo real muchas
+  // veces, asi que se listan siempre al final.
+  add(
+    'El sistema tiene los avisos silenciados',
+    IS_ANDROID
+      ? 'Comprueba que el "modo No molestar" o el ahorro de batería no estén bloqueando el '
+        + 'navegador, y que sus notificaciones estén activadas en los ajustes de Android.'
+      : 'Comprueba el modo "No molestar", el modo concentración y que el navegador tenga permiso '
+        + 'para mostrar notificaciones en los ajustes del sistema.',
+  );
+  add(
+    'Una extensión o el antivirus están bloqueando el permiso',
+    'Algunos bloqueadores de anuncios y suites de seguridad deniegan las notificaciones sin '
+      + 'preguntar. Desactívalos para este sitio y vuelve a intentarlo.',
+  );
+
+  // Si nada encajo, la primera de la lista se marca igualmente: dejar la
+  // ventana sin ninguna pista de por donde empezar no ayuda a nadie.
+  if (!causes.some((c) => c.likely) && causes.length) causes[0].likely = true;
+  return causes;
+}
+
+async function showPushHelp(state) {
+  const priv = await looksPrivate();
+  $('push-help-detail').textContent =
+    state?.detail || 'El navegador no ha permitido activar los avisos.';
+  $('push-help-list').innerHTML = pushCauses(state || {}, priv)
+    .map(
+      (c) => `<div class="cause${c.likely ? ' likely' : ''}">
+        <b>${escapeHtml(c.title)}</b>
+        <p>${escapeHtml(c.text)}</p>
+      </div>`,
+    )
+    .join('');
+  $('push-help').classList.remove('hidden');
+}
+
+$('push-help-close').onclick = () => $('push-help').classList.add('hidden');
+$('push-help').onclick = (e) => {
+  if (e.target === $('push-help')) $('push-help').classList.add('hidden');
+};
+$('push-help-retry').onclick = async () => {
+  const r = await ensurePush({ interactive: true });
+  syncNotifyButton();
+  if (r.ok) {
+    $('push-help').classList.add('hidden');
+    toast('Avisos activados en este dispositivo', 'ok');
+  } else {
+    showPushHelp(r);
+  }
+};
+
+/**
+ * Pide el permiso y, si no sale, explica por que. Es el camino unico de todos
+ * los botones que activan avisos, para que los tres se comporten igual.
+ */
+async function activateNotifications() {
+  const r = await ensurePush({ interactive: true });
+  syncNotifyButton();
+  if (!r.ok) showPushHelp(r);
+  return r;
 }
 
 function syncNotifyButton() {
@@ -2400,15 +2677,16 @@ function syncNotifyButton() {
 }
 
 $('btn-notify').onclick = async () => {
-  if (!CAN_NOTIFY) return;
-  const r = await ensurePush({ interactive: true });
-  syncNotifyButton();
-  toast(r.ok ? 'Avisos activados en este dispositivo' : r.detail, r.ok ? 'ok' : 'err');
+  const r = await activateNotifications();
+  if (r.ok) toast('Avisos activados en este dispositivo', 'ok');
 };
 
 /** Aviso en pantalla cuando la pestana esta abierta. */
 function notifyBrowser(e) {
   if (!CAN_NOTIFY || Notification.permission !== 'granted' || e.silent) return;
+  // El servidor decide que tipos avisan; aqui solo se obedece. Los eventos
+  // antiguos del historial no traen la marca, pero tampoco pasan por aqui.
+  if (e.notify === false) return;
   if (document.visibilityState === 'visible') return; // ya lo esta viendo
   // Con Service Worker el aviso lo muestra el, para que el clic reenfoque la
   // PWA en vez de abrir una pestana suelta.
@@ -2660,8 +2938,7 @@ $('onboard-install-btn').onclick = async () => {
   $('onboard-install-btn').hidden = true;
 };
 $('onboard-notify').onclick = async () => {
-  const r = await ensurePush({ interactive: true });
-  syncNotifyButton();
+  const r = await activateNotifications();
   paintOnboard();
   if (!r.ok) $('onboard-notify-note').textContent = r.detail;
   // Concedido: la ventana ya no tiene razon de ser y se quita sola.
@@ -2696,6 +2973,7 @@ async function showAdminPanel() {
     settings = r.settings;
     triggerCatalog = r.triggers || triggerCatalog;
     pushConfig = r.push || pushConfig;
+    if (r.devices) renderDevices(r.devices);
     const channels = Object.entries(r.channels || {}).filter(([, v]) => v).map(([k]) => k);
     $('account-note').textContent = r.account
       ? `Sesión iniciada como ${r.account}.`
@@ -2704,7 +2982,10 @@ async function showAdminPanel() {
     const lines = [];
     lines.push(
       pushConfig.supported
-        ? `Servidor: push activo · ${pushConfig.devices} dispositivo(s) suscrito(s)`
+        ? `Servidor: push activo · ${pushConfig.devices} dispositivo(s) suscrito(s)` +
+          (pushConfig.active != null && pushConfig.active !== pushConfig.devices
+            ? `, ${pushConfig.devices - pushConfig.active} silenciado(s)`
+            : '')
         : 'Servidor: sin claves VAPID (VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY). ' +
           'Los avisos solo llegarán con la web abierta.',
     );
@@ -2756,6 +3037,108 @@ function setSwitch(el, on) {
   el.setAttribute('aria-checked', on ? 'true' : 'false');
 }
 
+// ---------------------------------------------------------------------------
+// Dispositivos suscritos
+//
+// El filtro se aplica en el servidor al enviar, asi que apagar un dispositivo
+// aqui tiene efecto en el siguiente aviso sin que ese aparato tenga que abrir
+// la app. El servidor avisa por WebSocket, y por eso la lista se repinta sola
+// en todos los paneles abiertos.
+// ---------------------------------------------------------------------------
+
+/** Id de esta suscripcion, para senalarla en la lista. Lo da el alta. */
+let myDeviceId = null;
+
+function renderDevices(devices) {
+  const box = $('device-list');
+  const note = $('device-note');
+  if (!box) return;
+
+  if (!devices.length) {
+    box.innerHTML = '';
+    note.textContent = pushConfig.supported
+      ? 'Ningún dispositivo suscrito todavía. Se dan de alta solos al abrir la app con los '
+        + 'avisos concedidos.'
+      : 'El servidor no tiene claves VAPID, así que no hay suscripciones que listar.';
+    return;
+  }
+
+  box.innerHTML = devices
+    .map(
+      (d) => `<div class="dev${d.id === myDeviceId ? ' is-me' : ''}">
+        <div class="txt">
+          <b>${escapeHtml(d.label || 'Dispositivo')}</b>
+          <small>${escapeHtml(deviceSeen(d))}</small>
+        </div>
+        <button class="sw" data-device="${escapeAttr(d.id)}" role="switch"
+                aria-checked="${d.enabled ? 'true' : 'false'}"
+                aria-label="Avisos en ${escapeAttr(d.label || 'este dispositivo')}"></button>
+        <button class="kill" data-kill="${escapeAttr(d.id)}" title="Quitar de la lista"
+                aria-label="Quitar de la lista">
+          <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>`,
+    )
+    .join('');
+
+  const off = devices.filter((d) => !d.enabled).length;
+  note.textContent = off
+    ? `${devices.length} dispositivo(s) · ${off} silenciado(s). Los silenciados siguen suscritos, `
+      + 'pero no reciben avisos.'
+    : `${devices.length} dispositivo(s), todos recibiendo avisos.`;
+
+  box.querySelectorAll('[data-device]').forEach((el) => {
+    el.onclick = () => toggleDevice(el.dataset.device, el.getAttribute('aria-checked') !== 'true');
+  });
+  box.querySelectorAll('[data-kill]').forEach((el) => {
+    el.onclick = () => removeDevice(el.dataset.kill);
+  });
+}
+
+/** "Última conexión hace 3 h", o la fecha si ya hace días. */
+function deviceSeen(d) {
+  const at = d.lastSeen || d.at;
+  if (!at) return 'Sin actividad registrada';
+  const mins = Math.round((Date.now() - at) / 60_000);
+  if (mins < 2) return 'Activo ahora';
+  if (mins < 60) return `Visto hace ${mins} min`;
+  if (mins < 60 * 24) return `Visto hace ${Math.round(mins / 60)} h`;
+  return `Visto el ${new Date(at).toLocaleDateString([], { day: 'numeric', month: 'short' })}`;
+}
+
+async function toggleDevice(id, enabled) {
+  // Silenciar el propio movil desde el que se mira es casi siempre un
+  // despiste: la lista lo marca, y aun asi se pregunta.
+  if (id === myDeviceId && !enabled &&
+      !confirm('Vas a silenciar los avisos de este mismo dispositivo. ¿Seguro?')) {
+    return;
+  }
+  const res = await fetch(`/api/admin/devices/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) { toast(j.error || 'No se pudo cambiar', 'err'); return; }
+  if (j.push) pushConfig = { ...pushConfig, ...j.push };
+  renderDevices(j.devices || []);
+}
+
+async function removeDevice(id) {
+  if (!confirm('¿Quitar este dispositivo de la lista? Volverá a aparecer si abre la app.')) return;
+  const res = await fetch(`/api/admin/devices/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) { toast(j.error || 'No se pudo quitar', 'err'); return; }
+  if (j.push) pushConfig = { ...pushConfig, ...j.push };
+  renderDevices(j.devices || []);
+}
+
+/** True mientras el panel esta abierto y desbloqueado. */
+function adminPanelOpen() {
+  return !$('admin').classList.contains('hidden') &&
+    !$('admin-panel').classList.contains('hidden');
+}
+
 async function saveSettings(patch) {
   const res = await fetch('/api/settings', {
     method: 'PUT',
@@ -2789,9 +3172,8 @@ $('sw-enabled').onclick = () => saveSettings({ enabled: !settings?.enabled });
 $('btn-push-test').onclick = async () => {
   // Asegurar la suscripcion antes de probar: si este dispositivo no estaba
   // dado de alta, el "no hay dispositivos suscritos" no decia por que.
-  const r = await ensurePush({ interactive: true });
-  syncNotifyButton();
-  if (!r.ok) { toast(r.detail, 'err'); return; }
+  const r = await activateNotifications();
+  if (!r.ok) return; // la ventana de diagnostico ya explica lo que pasa
 
   const res = await fetch('/api/push/test', { method: 'POST' });
   const j = await res.json().catch(() => ({}));

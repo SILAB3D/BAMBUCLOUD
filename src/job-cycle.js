@@ -79,6 +79,10 @@ export class JobCycle extends EventEmitter {
       coolingPercent: this.coolingPercent(),
       jobName: this.jobName,
       outcome: this.outcome,
+      // El panel lo necesita para no volver a anunciar el 100 % de una pieza
+      // que ya se ha retirado: la impresora sigue reportando FINISH, pero
+      // para quien mira la pantalla eso ya es "lista para imprimir".
+      collected: this.collected,
     };
   }
 

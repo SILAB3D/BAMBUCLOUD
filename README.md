@@ -158,6 +158,13 @@ quedan dos etapas más, y son las que representa el panel de estado:
 | **Impresión** | `RUNNING` / `PREPARE` / `PAUSE` | % de impresión, restante, hora de fin, capas |
 | **Enfriamiento** | 15 min desde `FINISH` | % de enfriamiento, cuenta atrás, hora a la que estará lista, temperatura de la cama |
 | **Retirar** | al vencer el enfriamiento | anillo completo, horas de fin y enfriado, botón «Ya la he retirado» |
+| **Lista para imprimir** | tras pulsar «Ya la he retirado» | anillo vacío, sin porcentaje ni capas: la máquina está libre |
+
+La última fase existe porque la impresora **se queda clavada en `FINISH` al 100 %** hasta que
+empieza el siguiente trabajo. Sin ella, en cuanto se retiraba la pieza el panel volvía a
+anunciar una impresión completada que ya no le importaba a nadie. La marca de recogida se
+guarda en el ciclo (`collected`), se difunde por WebSocket —así todas las pantallas abiertas
+pasan a «lista para imprimir» a la vez— y se borra sola al arrancar un trabajo nuevo.
 
 El salto a «lista para retirar» lo dispara un **temporizador del servidor**, no un mensaje
 MQTT: la impresora no vuelve a hablar después de terminar. Por eso el keep-alive sigue
@@ -199,16 +206,35 @@ El desbloqueo dura una hora: la sesión del dashboard no caduca, pero el panel s
   retirar, en pausa, reanudada, fallida, atención requerida, errores HMS e hitos de progreso.
   El catálogo se define en `TRIGGERS` (`src/notifier.js`) y la interfaz se genera desde ahí:
   añadir un tipo allí basta para que aparezca su interruptor.
-  De serie solo vienen encendidos **enfriándose** y **lista para retirar**, que son los dos
-  que ocurren cuando ya nadie mira la pantalla; el resto se enciende aquí. Una vez tocas
-  cualquier interruptor, tu elección manda sobre estos valores por defecto.
+  **De serie vienen todos apagados** (`ON_BY_DEFAULT` en `src/notifier.js`): en el plan
+  gratuito de Render no hay disco, así que cada reinicio devuelve los ajustes a estos valores
+  y el punto de partida es el silencio. Los avisos se encienden a demanda desde aquí. Una vez
+  tocas cualquier interruptor, tu elección manda mientras el estado sobreviva; con un disco
+  persistente montado, para siempre.
 - **Enviar aviso de prueba**: suscribe este dispositivo si hacía falta y manda un push real.
-  Si algo falla, dice exactamente qué (permiso, claves del servidor, Service Worker…).
+  Si algo falla, se abre la ventana de diagnóstico con las causas probables.
 - **Cerrar sesión** de Bambu Lab: corta el MQTT y borra el token guardado. Para reconectar
   hará falta el código que Bambu envía por email.
 
-Los ajustes se guardan en disco y valen para todos los dispositivos. Un aviso desactivado
-sigue registrándose en el panel de actividad; lo que se corta es el envío.
+Los cambios se aplican **en tiempo real y para todos los dispositivos**: el filtro vive en el
+servidor, en el momento de enviar, así que apagar un aviso aquí lo apaga en todos los móviles
+sin que ninguno tenga que abrir la app. Los paneles abiertos en otras pantallas se repintan
+solos por WebSocket. Un aviso desactivado sigue registrándose en el panel de actividad; lo que
+se corta es el envío —y también el aviso en pantalla de las pestañas abiertas.
+
+### Dispositivos
+
+La sección **Dispositivos** del panel lista cada navegador suscrito a Web Push, con un nombre
+legible que el servidor deduce del user-agent (*Chrome · Android*, *Safari · iPhone (app
+instalada)*) y cuándo se le vio por última vez. El que estás usando aparece marcado.
+
+- **Interruptor por dispositivo**: silencia ese móvil concreto sin tocar los demás ni los
+  tipos de aviso. Sigue suscrito, simplemente deja de recibir envíos.
+- **Aspa**: lo saca del registro. Volverá a aparecer solo si abre la app con el permiso dado.
+
+El interruptor **se conserva al renovar la suscripción**: un dispositivo silenciado no se
+reactiva porque su dueño vuelva a abrir la app. Los identificadores son un hash del endpoint,
+así que son estables entre reinicios y no exponen el token del push service.
 
 ### Si no llegan las notificaciones
 
@@ -218,8 +244,16 @@ El panel de administración diagnostica las tres capas por separado:
    en las variables de entorno. Sin ellas no hay push, solo avisos con la web abierta.
 2. **Este dispositivo**: si no aparece «suscrito ✓», el texto explica por qué (permiso no
    concedido, bloqueado en el navegador, en iPhone sin instalar la app…).
-3. Los envíos y las altas quedan en el log del servidor (`[push] alta de dispositivo…`,
+3. Los envíos y las altas quedan en el log del servidor (`[push] alta de Chrome · Android…`,
    `[push] prueba enviada a N dispositivo(s)`).
+
+Además, **cuando pulsas cualquier botón de activar avisos y no se consigue**, se abre una
+ventana con las causas posibles, la más probable marcada primero: permiso bloqueado para el
+sitio (con los pasos para reabrirlo, distintos en iPhone y en escritorio), iPhone sin instalar
+la app, ventana de incógnito —donde el navegador desactiva el Service Worker—, conexión sin
+HTTPS, servidor sin claves VAPID, «No molestar» del sistema y extensiones que deniegan el
+permiso sin preguntar. La navegación privada solo se **intuye** (cuota de disco recortada,
+ausencia de Service Worker): sirve para ordenar la lista, nunca para bloquear nada.
 
 ### Ventana de bienvenida
 
@@ -410,8 +444,11 @@ los colores, regenera y súbelo: los PNG están versionados.
 | POST | `/api/admin/bambu-logout` | Cerrar sesión de Bambu Cloud (requiere admin) |
 | POST | `/api/admin/bambu-login` | Rehacer el login sin reiniciar (requiere admin) |
 | GET | `/api/push/key` | Clave pública VAPID |
-| POST | `/api/push/subscribe` | Alta de un dispositivo (`{ subscription }`) |
-| POST | `/api/push/test` | Aviso de prueba (requiere admin) |
+| POST | `/api/push/subscribe` | Alta de un dispositivo (`{ subscription, info }`) |
+| POST | `/api/push/test` | Aviso de prueba (requiere admin; `{ id }` para uno solo) |
+| GET | `/api/admin/devices` | Dispositivos suscritos (requiere admin) |
+| PATCH | `/api/admin/devices/:id` | Activar o silenciar uno (`{ enabled }`, requiere admin) |
+| DELETE | `/api/admin/devices/:id` | Quitarlo del registro (requiere admin) |
 | POST | `/api/camera` | El agente sube un JPEG (`{ image: base64 }`) |
 | GET | `/api/camera.jpg` | Último snapshot |
 | GET | `/api/health` | Healthcheck (incluye fase y si está despierto a propósito) |

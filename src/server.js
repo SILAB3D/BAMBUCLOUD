@@ -153,6 +153,16 @@ function broadcast(type, payload) {
   }
 }
 
+/** Resumen del estado de Web Push que consumen el snapshot y varias rutas. */
+function pushInfo() {
+  return {
+    supported: push.enabled,
+    publicKey: push.publicKey,
+    devices: push.count,
+    active: push.activeCount,
+  };
+}
+
 function snapshot() {
   return {
     status: app_state.status,
@@ -166,7 +176,7 @@ function snapshot() {
     historyDays: HISTORY_DAYS,
     cycle: jobCycle.toJSON(),
     settings: notifier.settings,
-    push: { supported: push.enabled, publicKey: push.publicKey, devices: push.count },
+    push: pushInfo(),
     loginPending: app_state.loginPending,
     connected: Boolean(app_state.cloud?.connected),
     lastMessageAt: app_state.cloud?.lastMessageAt || null,
@@ -616,6 +626,10 @@ app.get('/api/cycle', requireAuth, (req, res) => res.json(jobCycle.toJSON()));
 /** "Ya la he retirado": cierra el ciclo y devuelve el panel a reposo. */
 app.post('/api/cycle/collected', requireAuth, (req, res) => {
   jobCycle.clear({ collected: true });
+  // Se difunde a mano: si el ciclo ya estaba en `idle`, `clear` no cambia de
+  // fase y no emite nada, y las demas pantallas seguirian anunciando el 100 %
+  // de una pieza que acaban de retirar en la de al lado.
+  broadcast('cycle', jobCycle.toJSON());
   res.json({ ok: true, cycle: jobCycle.toJSON() });
 });
 
@@ -623,36 +637,92 @@ app.post('/api/cycle/collected', requireAuth, (req, res) => {
 // Web Push
 // ---------------------------------------------------------------------------
 
-app.get('/api/push/key', requireAuth, (req, res) => {
-  res.json({ supported: push.enabled, publicKey: push.publicKey, devices: push.count });
-});
+app.get('/api/push/key', requireAuth, (req, res) => res.json(pushInfo()));
+
+/**
+ * Avisa a los paneles abiertos de que la lista de dispositivos ha cambiado.
+ * Es lo que hace que silenciar un movil desde un portatil se vea al momento en
+ * el resto de pantallas, sin recargar nada.
+ */
+function broadcastDevices() {
+  broadcast('devices', { devices: push.devices, push: pushInfo() });
+}
 
 app.post('/api/push/subscribe', requireAuth, (req, res) => {
   if (!push.enabled) return res.status(503).json({ error: 'Web Push no configurado' });
-  const result = push.subscribe(req.body?.subscription || req.body);
+  // El user-agent de la cabecera manda sobre el que diga el cuerpo: el cliente
+  // solo aporta lo que la cabecera no lleva (si corre como app instalada).
+  const result = push.subscribe(req.body?.subscription || req.body, {
+    ua: req.get('user-agent') || '',
+    standalone: Boolean(req.body?.info?.standalone),
+  });
   if (!result.ok) return res.status(400).json(result);
+  broadcastDevices();
   res.json(result);
 });
 
 app.post('/api/push/unsubscribe', requireAuth, (req, res) => {
-  res.json(push.unsubscribe(String(req.body?.endpoint || '')));
+  const result = push.unsubscribe(String(req.body?.endpoint || ''));
+  broadcastDevices();
+  res.json(result);
 });
 
-/** Comprobacion desde el panel: manda un aviso real a este dispositivo. */
+/**
+ * Comprobacion desde el panel: manda un aviso real.
+ *
+ * Con `id` va a un unico dispositivo y se salta su interruptor: probar un
+ * movil silenciado tiene que decir si el canal funciona, no repetir que esta
+ * silenciado —eso ya lo muestra la lista.
+ */
 app.post('/api/push/test', requireAuth, requireAdmin, async (req, res) => {
   if (!push.enabled) {
     return res.status(503).json({
       error: 'El servidor no tiene claves VAPID configuradas (VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY)',
     });
   }
-  const result = await push.send({
-    title: app_state.printer?.name || 'Bambu Lab',
-    body: '🔔 Prueba de notificaciones. Si lees esto, funciona.',
-    tag: 'test',
-    url: '/',
-  });
+  const only = req.body?.id ? String(req.body.id) : null;
+  const result = await push.send(
+    {
+      title: app_state.printer?.name || 'Bambu Lab',
+      body: '🔔 Prueba de notificaciones. Si lees esto, funciona.',
+      tag: 'test',
+      url: '/',
+    },
+    { only, ignoreEnabled: Boolean(only) },
+  );
   console.log(`[push] prueba enviada a ${result.sent} dispositivo(s)`);
+  if (result.removed) broadcastDevices();
   res.json({ ok: true, devices: push.count, ...result });
+});
+
+// ---------------------------------------------------------------------------
+// Dispositivos suscritos
+//
+// Un interruptor por movil, ademas de los que hay por tipo de aviso: sirve
+// para callar el telefono del trabajo sin dejar de avisar al de casa. El
+// filtro se aplica en el envio (src/push.js), asi que el cambio tiene efecto
+// en el siguiente aviso sin que el dispositivo tenga que hacer nada.
+// ---------------------------------------------------------------------------
+
+app.get('/api/admin/devices', requireAuth, requireAdmin, (req, res) => {
+  res.json({ devices: push.devices, push: pushInfo() });
+});
+
+app.patch('/api/admin/devices/:id', requireAuth, requireAdmin, (req, res) => {
+  if (typeof req.body?.enabled !== 'boolean') {
+    return res.status(400).json({ error: 'Falta el campo enabled' });
+  }
+  const result = push.setEnabled(String(req.params.id), req.body.enabled);
+  if (!result.ok) return res.status(404).json(result);
+  broadcastDevices();
+  res.json({ ...result, devices: push.devices, push: pushInfo() });
+});
+
+app.delete('/api/admin/devices/:id', requireAuth, requireAdmin, (req, res) => {
+  const result = push.remove(String(req.params.id));
+  if (!result.ok) return res.status(404).json(result);
+  broadcastDevices();
+  res.json({ ...result, devices: push.devices, push: pushInfo() });
 });
 
 // ---------------------------------------------------------------------------
@@ -707,7 +777,10 @@ app.get('/api/settings', requireAuth, (req, res) => {
     // El cliente dibuja un interruptor por entrada: la lista manda.
     triggers: TRIGGERS,
     progressStep: notifier.progressStep,
-    push: { supported: push.enabled, publicKey: push.publicKey, devices: push.count },
+    push: pushInfo(),
+    // Solo con el panel desbloqueado: la lista dice que aparatos entran en la
+    // cuenta y no es asunto de una sesion cualquiera.
+    devices: adminUnlocked(req) ? push.devices : null,
     channels: {
       telegram: Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID),
       discord: Boolean(process.env.DISCORD_WEBHOOK),
@@ -796,6 +869,7 @@ app.get('/api/health', (req, res) => {
     keepAlive: Boolean(KEEPALIVE_URL),
     awake: needsWakefulness(),
     pushDevices: push.count,
+    pushActive: push.activeCount,
   });
 });
 
