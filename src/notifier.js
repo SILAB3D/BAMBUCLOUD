@@ -11,7 +11,7 @@
 
 import { EventEmitter } from 'node:events';
 
-const SEVERITY = { 1: 'fatal', 2: 'grave', 3: 'aviso', 4: 'info' };
+import { lookupHms, lookupPrintError } from './error-codes.js';
 
 export const HISTORY_DAYS = 15;
 const HISTORY_MS = HISTORY_DAYS * 24 * 60 * 60 * 1000;
@@ -20,61 +20,136 @@ const HISTORY_MS = HISTORY_DAYS * 24 * 60 * 60 * 1000;
 const HISTORY_MAX = 600;
 
 /**
+ * Las dos categorias de avisos.
+ *
+ * `basic` es el minimo por el que uno tiene esto instalado: cuando la pieza se
+ * esta enfriando, cuando ya se puede tocar, y cuando la maquina reporta un
+ * error. Todo lo demas es seguimiento, util pero prescindible, y va en `other`.
+ *
+ * Cada categoria tiene su propio interruptor, que actua de llave maestra sobre
+ * los avisos que contiene: apagar la categoria los calla todos sin perder que
+ * tenia encendido cada uno, y volver a encenderla los devuelve como estaban.
+ */
+export const CATEGORIES = [
+  {
+    key: 'basic',
+    label: 'Notificaciones básicas',
+    desc: 'Enfriamiento, pieza lista y errores de la impresora.',
+  },
+  {
+    key: 'other',
+    label: 'Otras notificaciones',
+    desc: 'Seguimiento del trabajo: inicio, fin, pausas y progreso.',
+  },
+];
+
+/**
  * Catalogo de avisos que la app puede emitir.
  *
  * Es la unica fuente de verdad: el panel de administracion dibuja un
- * interruptor por entrada, asi que anadir un tipo aqui basta para que aparezca
- * en la interfaz. `key` coincide con el `type` que se pasa a fire().
+ * interruptor por entrada, agrupados por `category`, asi que anadir un tipo
+ * aqui basta para que aparezca en la interfaz. `key` coincide con el `type`
+ * que se pasa a fire().
  */
 export const TRIGGERS = [
-  { key: 'started', label: 'Impresión iniciada', desc: 'Al empezar un trabajo nuevo.' },
-  { key: 'finished', label: 'Impresión terminada', desc: 'Cuando la impresora acaba el trabajo.' },
   {
     key: 'cooling',
+    category: 'basic',
     label: 'La impresión se está enfriando',
     desc: 'Al terminar, cuando arranca el periodo de enfriamiento.',
   },
   {
     key: 'ready',
+    category: 'basic',
     label: 'La impresión puede retirarse',
     desc: 'Cuando la cama ya se ha enfriado y la pieza se puede sacar.',
   },
-  { key: 'paused', label: 'Impresión en pausa', desc: 'Pausa manual, por AMS o por el usuario.' },
-  { key: 'resumed', label: 'Impresión reanudada', desc: 'Al continuar tras una pausa.' },
-  { key: 'failed', label: 'Impresión fallida', desc: 'Cuando el trabajo termina en error.' },
+  {
+    key: 'hms',
+    category: 'basic',
+    label: 'Errores de la impresora (HMS)',
+    desc: 'Traducidos del catálogo oficial de Bambu Lab, con qué hacer.',
+  },
+  {
+    key: 'started',
+    category: 'other',
+    label: 'Impresión iniciada',
+    desc: 'Al empezar un trabajo nuevo.',
+  },
+  {
+    key: 'finished',
+    category: 'other',
+    label: 'Impresión terminada',
+    desc: 'Cuando la impresora acaba el trabajo.',
+  },
+  {
+    key: 'paused',
+    category: 'other',
+    label: 'Impresión en pausa',
+    desc: 'Pausa manual, por AMS o por el usuario.',
+  },
+  {
+    key: 'resumed',
+    category: 'other',
+    label: 'Impresión reanudada',
+    desc: 'Al continuar tras una pausa.',
+  },
+  {
+    key: 'failed',
+    category: 'other',
+    label: 'Impresión fallida',
+    desc: 'Cuando el trabajo termina en error.',
+  },
   {
     key: 'attention',
+    category: 'other',
     label: 'La impresora necesita atención',
     desc: 'Cambio de filamento, atasco, filamento agotado…',
   },
-  { key: 'hms', label: 'Errores HMS', desc: 'Códigos de diagnóstico que reporta la máquina.' },
   {
     key: 'progress',
+    category: 'other',
     label: 'Hitos de progreso',
     desc: 'Avisos cada N % (solo si NOTIFY_PROGRESS_STEP no es 0).',
   },
 ];
 
+/** type -> categoria, resuelto una vez. */
+const CATEGORY_OF = new Map(TRIGGERS.map((t) => [t.key, t.category]));
+
 /**
- * Todo llega apagado, a proposito.
+ * Todo llega apagado, a proposito, y ahora quien lo apaga son las categorias.
  *
  * En el plan gratuito de Render no hay disco: cada reinicio del servicio se
  * lleva por delante `bambu-state.json` y con el los ajustes, asi que lo que
  * este aqui es lo que habra tras cada redespliegue o cada vez que el servicio
- * despierte de cero. Con la lista vacia, el silencio es el punto de partida y
- * los avisos se encienden a demanda desde el panel de administracion; al reves
- * —arrancar con `cooling`/`ready` encendidos— cualquier reinicio reactivaba
- * solo unos avisos que quiza se habian apagado hace un minuto.
+ * despierte de cero. Con las dos categorias apagadas, el silencio es el punto
+ * de partida; al reves —arrancar con `cooling`/`ready` encendidos— cualquier
+ * reinicio reactivaba solo unos avisos que quiza se habian apagado hace un
+ * minuto.
+ *
+ * Los interruptores individuales SI arrancan encendidos: asi encender una
+ * categoria enciende de verdad lo que promete, en vez de dejar al usuario
+ * delante de una lista que sigue muda hasta que la recorre entera.
  *
  * Con un disco persistente montado (ver render.yaml) esto solo decide el
  * primer arranque; a partir de ahi manda lo guardado.
  */
-const ON_BY_DEFAULT = new Set();
-
 export const DEFAULT_SETTINGS = {
   enabled: true,
-  triggers: Object.fromEntries(TRIGGERS.map((t) => [t.key, ON_BY_DEFAULT.has(t.key)])),
+  groups: Object.fromEntries(CATEGORIES.map((c) => [c.key, false])),
+  triggers: Object.fromEntries(TRIGGERS.map((t) => [t.key, true])),
 };
+
+/**
+ * Ajustes guardados antes de que existieran las categorias.
+ *
+ * No traen `groups`, y darles el valor de fabrica (apagado) dejaria mudo de
+ * golpe un dashboard que estaba avisando. Se les dan las dos categorias
+ * encendidas: los interruptores individuales que ya tenian guardados siguen
+ * mandando exactamente igual que antes.
+ */
+const LEGACY_GROUPS = Object.fromEntries(CATEGORIES.map((c) => [c.key, true]));
 
 export class Notifier extends EventEmitter {
   /**
@@ -113,10 +188,12 @@ export class Notifier extends EventEmitter {
   // -------------------------------------------------------------------------
 
   get settings() {
-    const saved = this.store?.get('settings') || {};
+    const saved = this.store?.get('settings');
+    if (!saved) return structuredClone(DEFAULT_SETTINGS);
     return {
       ...DEFAULT_SETTINGS,
       ...saved,
+      groups: { ...(saved.groups ? DEFAULT_SETTINGS.groups : LEGACY_GROUPS), ...(saved.groups || {}) },
       triggers: { ...DEFAULT_SETTINGS.triggers, ...(saved.triggers || {}) },
     };
   }
@@ -126,8 +203,12 @@ export class Notifier extends EventEmitter {
     const current = this.settings;
     const next = {
       enabled: typeof patch.enabled === 'boolean' ? patch.enabled : current.enabled,
+      groups: { ...current.groups },
       triggers: { ...current.triggers },
     };
+    for (const [key, value] of Object.entries(patch.groups || {})) {
+      if (typeof value === 'boolean' && key in next.groups) next.groups[key] = value;
+    }
     for (const [key, value] of Object.entries(patch.triggers || {})) {
       if (typeof value === 'boolean') next.triggers[key] = value;
     }
@@ -139,13 +220,18 @@ export class Notifier extends EventEmitter {
   }
 
   /**
-   * Un tipo sin interruptor propio (arranque, fallo, HMS...) solo depende del
-   * interruptor maestro: los unicos con conmutador individual son los que se
-   * exponen en el panel de administracion.
+   * Tres llaves en serie, de la mas general a la mas concreta: el interruptor
+   * maestro, el de la categoria a la que pertenece el aviso, y el suyo propio.
+   * Basta con que una este abierta... perdon, cerrada, para que no salga nada.
+   *
+   * Un tipo que no este en el catalogo (uno nuevo que aun no tenga ficha) pasa
+   * la parte de categoria: mejor que avise de mas a que se pierda en silencio.
    */
   allows(type) {
     const s = this.settings;
     if (!s.enabled) return false;
+    const category = CATEGORY_OF.get(type);
+    if (category && s.groups[category] === false) return false;
     return s.triggers[type] !== false;
   }
 
@@ -171,10 +257,20 @@ export class Notifier extends EventEmitter {
         });
         this.lastProgressBucket = -1;
       } else if (next.state === 'FAILED') {
+        // La impresora suele decir POR QUE ha fallado en `print_error`, que es
+        // un codigo del mismo catalogo oficial que los HMS. Sin traducirlo, el
+        // aviso se queda en "ha fallado" y hay que ir a mirar a la maquina.
+        const error = lookupPrintError(next.printError);
         this.fire('failed', `❌ Impresión fallida: ${job}`, {
           printerName,
           job,
           level: 'error',
+          ...(error && {
+            code: error.code,
+            detail: error.description,
+            remedy: error.remedy,
+            url: error.url,
+          }),
         });
         this.lastProgressBucket = -1;
       } else if (next.state === 'PAUSE') {
@@ -213,16 +309,25 @@ export class Notifier extends EventEmitter {
     }
 
     // --- Errores HMS nuevos ---
+    //
+    // El aviso lleva QUE pasa (texto oficial de Bambu) y QUE HACER, no el
+    // codigo: "0700_2000_0002_0001" no le dice nada a nadie a las tres de la
+    // madrugada. El codigo sigue viajando en `code` para el historial y para
+    // el enlace a la ficha oficial.
     for (const h of next.hms || []) {
       if (this.seenHms.has(h.id)) continue;
       this.seenHms.add(h.id);
-      const sev = SEVERITY[h.severity] || 'desconocida';
-      this.fire('hms', `🔧 Error HMS ${h.id} (severidad: ${sev})`, {
+      const info = lookupHms(h.id, h.severity);
+      const headline = info.known ? info.description : `Error ${info.id} (${info.severityLabel})`;
+      this.fire('hms', `🔧 ${headline}`, {
         printerName,
         job,
-        level: h.severity <= 2 ? 'error' : 'warning',
-        code: h.id,
-        url: `https://wiki.bambulab.com/en/x1/troubleshooting/hmscode?code=${h.id}`,
+        level: info.severity <= 2 ? 'error' : 'warning',
+        code: info.id,
+        severity: info.severity,
+        severityLabel: info.severityLabel,
+        remedy: info.remedy,
+        url: info.url,
       });
     }
     // Limpiar los que ya se resolvieron
@@ -283,8 +388,24 @@ export class Notifier extends EventEmitter {
       .slice(0, HISTORY_MAX);
   }
 
+  /**
+   * Un aviso traducido tiene tres partes y no todos los canales admiten las
+   * tres: Telegram y Discord se llevan el texto entero (que hace, que hacer y
+   * el enlace a la ficha), y el push del movil solo las dos primeras — el
+   * enlace no se puede pulsar desde la notificacion, y ocupa dos lineas.
+   */
+  static compose(text, meta = {}, { withUrl = true } = {}) {
+    const lines = [text];
+    if (meta.detail && meta.detail !== text) lines.push(meta.detail);
+    if (meta.remedy) lines.push(`👉 ${meta.remedy}`);
+    if (withUrl && meta.url) lines.push(meta.url);
+    return lines.join('\n');
+  }
+
   async send(text, meta = {}) {
     const jobs = [];
+    const full = Notifier.compose(text, meta);
+    const short = Notifier.compose(text, meta, { withUrl: false });
 
     if (this.telegramToken && this.telegramChatId) {
       jobs.push(
@@ -293,7 +414,7 @@ export class Notifier extends EventEmitter {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: this.telegramChatId,
-            text: meta.url ? `${text}\n${meta.url}` : text,
+            text: full,
             disable_notification: Boolean(meta.silent),
           }),
         }),
@@ -305,7 +426,7 @@ export class Notifier extends EventEmitter {
         fetch(this.discordWebhook, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: meta.url ? `${text}\n${meta.url}` : text }),
+          body: JSON.stringify({ content: full }),
         }),
       );
     }
@@ -326,7 +447,7 @@ export class Notifier extends EventEmitter {
       jobs.push(
         this.push.send({
           title: meta.printerName || 'Bambu Lab',
-          body: text,
+          body: short,
           tag: meta.type || 'bambu',
           url: '/',
         }),

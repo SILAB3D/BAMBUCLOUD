@@ -34,6 +34,13 @@ services:
         value: production
       - key: BAMBU_REGION
         value: global
+      # Franja en la que el servicio se mantiene despierto aunque no haya nada
+      # imprimiendo, para detectar el arranque de un trabajo al momento.
+      # ~420 h/mes de las 750 del plan free. "off" la desactiva.
+      - key: WAKE_WINDOW
+        value: 9-23
+      - key: WAKE_TZ
+        value: Europe/Madrid
       # sync:false = Render la pide al crear el servicio y no se guarda en git.
       - key: BAMBU_EMAIL
         sync: false

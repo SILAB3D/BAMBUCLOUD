@@ -8,6 +8,8 @@ RUN npm ci --omit=dev
 
 COPY src ./src
 COPY public ./public
+# Catalogo oficial de codigos de error de Bambu Lab (ver src/error-codes.js).
+COPY data ./data
 # El agente de camara vive en la misma imagen: docker-compose lo arranca como
 # un segundo servicio con otro CMD.
 COPY agent ./agent

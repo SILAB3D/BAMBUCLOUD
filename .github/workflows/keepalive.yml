@@ -1,0 +1,62 @@
+# Despertador externo del dashboard.
+#
+# POR QUE HACE FALTA ALGO EXTERNO
+# -------------------------------
+# En el plan gratuito de Render el servicio se duerme tras 15 min sin trafico
+# entrante, y dormido no corre nada: ni MQTT, ni temporizadores, ni el auto-ping
+# del propio servidor. Un proceso dormido NO PUEDE despertarse a si mismo ni
+# enterarse de que ha empezado una impresion.
+#
+# Este workflow es ese primer estimulo. Una vez el servidor esta en pie, se
+# sostiene solo durante su franja de vigilancia (WAKE_WINDOW, por defecto 9-23)
+# y durante toda impresion, asi que aqui basta con llamar una vez por hora:
+# lo unico que se cubre es el arranque del dia y los reinicios/despliegues.
+#
+# COSTE
+# -----
+# 0. GitHub Actions es gratis (ilimitado en repos publicos, 2.000 min/mes en
+# privados) y cada ejecucion son unos segundos. 16 al dia ~ 490 min/mes.
+#
+# AVISO
+# -----
+# GitHub desactiva los workflows programados de un repo sin actividad durante
+# 60 dias, y avisa por correo antes de hacerlo. Si esto va a quedarse solo,
+# mejor un cron externo de verdad (cron-job.org, gratis y sin esa regla); el
+# README lo explica. Tener los dos a la vez tampoco molesta.
+
+name: keepalive
+
+on:
+  schedule:
+    # En UTC. De 07:00 a 22:00 UTC cubre 9:00-23:00 de Madrid tanto en horario
+    # de verano (UTC+2) como de invierno (UTC+1), sin tener que tocar nada en
+    # marzo ni en octubre.
+    - cron: '0 7-22 * * *'
+  workflow_dispatch: # para probarlo a mano desde la pestaña Actions
+
+# Si una ejecucion se retrasa (GitHub no garantiza la puntualidad del cron) y
+# se solapa con la siguiente, se queda la nueva: despertar dos veces no aporta.
+concurrency:
+  group: keepalive
+  cancel-in-progress: true
+
+jobs:
+  wake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Despertar el dashboard
+        env:
+          # Ponla en Settings -> Secrets and variables -> Actions -> Variables,
+          # con el nombre DASHBOARD_URL y el valor https://tu-dominio.com
+          DASHBOARD_URL: ${{ vars.DASHBOARD_URL }}
+        run: |
+          if [ -z "$DASHBOARD_URL" ]; then
+            echo "Falta la variable DASHBOARD_URL del repositorio." >&2
+            exit 1
+          fi
+          # --max-time generoso: un servicio dormido tarda ~30-50 s en arrancar,
+          # y cortar antes seria despertarlo y no enterarse.
+          curl --fail --silent --show-error --location \
+               --retry 2 --retry-delay 20 --max-time 90 \
+               "${DASHBOARD_URL%/}/api/wake"

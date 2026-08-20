@@ -14,8 +14,12 @@ Basado en el protocolo que implementa [PrintSphere](https://github.com/cptkirki/
 - **Ciclo completo de la impresión**: no acaba en «terminada». El panel de estado pasa por
   tres fases —**impresión → enfriamiento (15 min) → lista para retirar**— y avisa en cada
   salto. La fase de retirada se cierra con un botón «Ya la he retirado».
-- **Notificaciones push al móvil (Web Push)**: llegan con la PWA cerrada. Configurables desde
-  el panel de administración. También por Telegram, Discord y webhook genérico.
+- **Notificaciones push al móvil (Web Push)**: llegan con la PWA cerrada. Agrupadas en dos
+  categorías —básicas y otras— que se encienden en conjunto o una a una desde el panel de
+  administración. También por Telegram, Discord y webhook genérico.
+- **Errores traducidos, no códigos**: el catálogo oficial de Bambu Lab en español
+  (2.015 códigos HMS y 490 de impresión) va incluido, así que el aviso dice qué pasa y qué
+  hacer en vez de soltar `0700_2000_0002_0001`.
 - **Instalable como app (PWA)**: «Añadir a pantalla de inicio» en Android/iOS.
 - **Actividad de 15 días** persistida en disco, con scroll y separadores por día
 - **Cámara**: snapshots reales de la A1 mediante un agente ligero que corre en tu red (ver más abajo)
@@ -97,8 +101,8 @@ node -e "console.log(require('./.bambu-token.json').token)"
 Límites del plan gratuito que conviene tener presentes:
 
 - **Se duerme tras 15 min sin visitas.** El primer acceso tarda ~1 min en despertar y,
-  mientras duerme, no hay conexión MQTT: no se envían notificaciones. El keep-alive lo
-  mantiene despierto mientras imprime y mientras enfría, que es cuando importa.
+  mientras duerme, no hay conexión MQTT: no se envían notificaciones. Ver
+  *[Mantener el servicio despierto](#mantener-el-servicio-despierto)* justo debajo.
 - **No hay disco persistente.** Por eso el token va en `BAMBU_TOKEN` en vez de en
   fichero. Si algún día Bambu lo rechaza, actualiza esa variable con uno nuevo.
   Esto afecta también al **historial de actividad, los ajustes de avisos y las
@@ -114,6 +118,66 @@ Límites del plan gratuito que conviene tener presentes:
 **Si quieres que nada de esto se pierda**: plan `starter` (7 $/mes) y descomenta el bloque
 `disk` de `render.yaml` (montado en `/data`). Con disco, historial, ajustes, suscripciones y
 token sobreviven a cualquier reinicio, y el servicio deja de dormirse.
+
+### Mantener el servicio despierto
+
+En el plan gratuito de Render el servicio se duerme tras 15 min sin tráfico **entrante**, y
+dormido **no corre nada**: ni MQTT, ni temporizadores, ni el auto-ping del propio servidor. De
+ahí salen las dos reglas que mandan sobre todo lo demás:
+
+> Un proceso dormido **no puede despertarse a sí mismo** ni enterarse de que ha empezado
+> una impresión. El primer estímulo tiene que venir de fuera, siempre.
+
+La vigilia se sostiene en cuatro capas, de dentro afuera:
+
+| Capa | Quién la sostiene | Cuándo actúa |
+| --- | --- | --- |
+| **Impresión en curso** | el propio servidor, cada `KEEPALIVE_MS` (10 min) | mientras imprime, esté a la hora que esté |
+| **Enfriamiento** | el servidor, con un ping justo al acabar la cuenta atrás | los 15 min de enfriado, para que salga el «ya puedes retirarla» |
+| **Franja de vigilancia** | el servidor, mientras esté en pie | dentro de `WAKE_WINDOW` (9-23 por defecto), aunque no haya nada imprimiendo |
+| **Primer ping del día** | **un cron externo** llamando a `GET /api/wake` | una vez por hora, como red de seguridad |
+
+Lo que aporta la franja es lo único que faltaba: si una impresión **empieza** con el servicio
+dormido, nadie se entera hasta que algo lo despierte. Despierto durante la franja, ese arranque
+se detecta al momento y a partir de ahí la impresión se sostiene sola, aunque acabe a las 4 de
+la mañana.
+
+**El coste sigue siendo 0.** Render regala 750 h de instancia al mes; una franja de 9 a 23 son
+14 h/día, **~420 h/mes**, con sitio de sobra para las impresiones que se salgan de la franja y
+para los despliegues. Estar despierto 24/7 serían ~730 h: entra por los pelos y sin ningún
+margen, de ahí que la franja no sea 0-24. `GET /api/health` devuelve la cuenta estimada para
+poder mirarla en vez de suponerla.
+
+```bash
+WAKE_WINDOW=9-23           # "23-7" también vale (cruza la medianoche); "off" lo desactiva
+WAKE_TZ=Europe/Madrid      # el contenedor de Render va en UTC: sin esto la franja se desplaza
+```
+
+#### El despertador externo
+
+Dos opciones, las dos gratis. Con una basta; tener las dos tampoco molesta.
+
+**GitHub Actions** — ya viene hecho en `.github/workflows/keepalive.yml`. Solo hay que crear la
+variable del repositorio en *Settings → Secrets and variables → Actions → Variables*:
+
+```
+DASHBOARD_URL = https://tu-dominio.com
+```
+
+Corre cada hora entre las 07:00 y las 22:00 UTC, que cubre 9:00-23:00 de Madrid en verano y en
+invierno sin tocar nada. Gratis (ilimitado en repos públicos, 2.000 min/mes en privados) y cada
+ejecución son segundos.
+
+> **Aviso**: GitHub desactiva los workflows programados de un repo sin actividad durante 60
+> días (avisa por correo antes). Si esto va a quedarse solo, mejor la opción de abajo.
+
+**cron-job.org** — gratis, sin límite de ejecuciones y sin la regla de los 60 días. Crea un job
+que llame a `https://tu-dominio.com/api/wake` cada hora, con el tiempo de espera al máximo (un
+servicio dormido tarda ~30-50 s en arrancar).
+
+`/api/wake` no lleva autenticación a propósito: no expone nada que no exponga ya `/api/health`
+y tiene que poder llamarla un cron gratuito sin secretos que rotar. Devuelve `wasAwake: false`
+cuando el servicio estaba realmente dormido y el ping ha servido de algo.
 
 ### 2. Agente de cámara (opcional, en tu red)
 
@@ -196,21 +260,65 @@ hace una vez por móvil.
 > **En iPhone/iPad**, Safari solo permite push si la web está **añadida a la pantalla de
 > inicio**. Desde una pestaña normal el botón no hará nada. En Android funciona en ambos casos.
 
+### Códigos de error traducidos
+
+Los avisos de error no dan el código, dan **lo que pasa y lo que hay que hacer**. En vez de
+
+> 🔧 Error HMS 0700_2000_0002_0001 (severidad: grave)
+
+llega
+
+> 🔧 AMS A Se ha agotado el filamento de la ranura 1. Por favor, inserta un filamento nuevo.
+> 👉 Carga una bobina nueva en esa ranura y reanuda desde la impresora.
+> https://bambulab.com/es-es/support/hms/0700_2000_0002_0001
+
+El texto descriptivo es **el oficial de Bambu Lab**, en español: sale de
+`https://e.bambulab.com/query.php`, la misma fuente que alimenta el buscador de errores de la
+web de soporte y la app Handy. El catálogo completo —**2.015 códigos HMS y 490 de error de
+impresión**— vive versionado en `data/bambu-errors.json`, así que el servidor arranca con él
+sin depender de la red, que es justo lo que no conviene cuando hay un error que traducir.
+
+Para actualizarlo cuando Bambu añada códigos:
+
+```bash
+npm run errors     # reescribe data/bambu-errors.json; revisa el diff y confirma
+```
+
+La línea de **«qué hacer»** no viene de Bambu: el catálogo oficial publica la causa, no la
+solución. Se deduce en `src/error-codes.js` con reglas sobre ese texto oficial (filamento
+agotado → «carga una bobina», mal contacto en un conector → «revisa el conector»…). Cubre el
+~83 % de los códigos con una acción concreta; el resto cae en un consejo según la gravedad. El
+detalle completo está siempre a un clic, en el enlace a la ficha oficial.
+
+Lo mismo se aplica a `print_error`: cuando una impresión falla, el aviso incluye **por qué**
+falló, no solo que falló.
+
 ### Panel de administración
 
 Botón del engranaje, arriba a la derecha → código **1510** (cambiable con `ADMIN_CODE`).
 El desbloqueo dura una hora: la sesión del dashboard no caduca, pero el panel sí.
 
 - **Enviar notificaciones**: interruptor general de los avisos de la app.
-- **Un interruptor por tipo de aviso**: impresión iniciada, terminada, enfriándose, lista para
-  retirar, en pausa, reanudada, fallida, atención requerida, errores HMS e hitos de progreso.
-  El catálogo se define en `TRIGGERS` (`src/notifier.js`) y la interfaz se genera desde ahí:
-  añadir un tipo allí basta para que aparezca su interruptor.
-  **De serie vienen todos apagados** (`ON_BY_DEFAULT` en `src/notifier.js`): en el plan
-  gratuito de Render no hay disco, así que cada reinicio devuelve los ajustes a estos valores
-  y el punto de partida es el silencio. Los avisos se encienden a demanda desde aquí. Una vez
-  tocas cualquier interruptor, tu elección manda mientras el estado sobreviva; con un disco
-  persistente montado, para siempre.
+- **Dos categorías, cada una con su interruptor maestro**:
+  - **Notificaciones básicas** — la impresión se está enfriando, la impresión puede retirarse,
+    y los errores de la impresora (HMS).
+  - **Otras notificaciones** — iniciada, terminada, en pausa, reanudada, fallida, atención
+    requerida e hitos de progreso.
+- **Un interruptor por tipo de aviso**, dentro de su categoría. Son tres llaves en serie: el
+  maestro, el de la categoría y el del aviso; con que una esté cerrada, no sale nada. Apagar
+  una categoría **no borra** lo que tenía cada aviso, así que volver a encenderla lo devuelve
+  tal cual estaba.
+
+  El catálogo se define en `CATEGORIES` y `TRIGGERS` (`src/notifier.js`) y la interfaz se
+  genera desde ahí: añadir un tipo allí, con su `category`, basta para que aparezca su
+  interruptor en el sitio correcto.
+
+  **De serie las dos categorías vienen apagadas** (`DEFAULT_SETTINGS` en `src/notifier.js`):
+  en el plan gratuito de Render no hay disco, así que cada reinicio devuelve los ajustes a
+  estos valores y el punto de partida es el silencio. Los interruptores individuales, en
+  cambio, arrancan encendidos, para que encender una categoría encienda de verdad lo que
+  promete. Una vez tocas cualquier interruptor, tu elección manda mientras el estado
+  sobreviva; con un disco persistente montado, para siempre.
 - **Enviar aviso de prueba**: suscribe este dispositivo si hacía falta y manda un push real.
   Si algo falla, se abre la ventana de diagnóstico con las causas probables.
 - **Cerrar sesión** de Bambu Lab: corta el MQTT y borra el token guardado. Para reconectar
@@ -396,7 +504,10 @@ Comandos útiles publicados en `device/<SERIAL>/request`:
 src/bambu-cloud.js       login, listado de equipos, MQTT, reconexión, refresh de token
 src/normalize.js         report crudo → objeto limpio (estados, etapas, AMS, HMS)
 src/job-cycle.js         fases impresión → enfriamiento → retirada (con temporizador)
-src/notifier.js          catálogo de avisos + transiciones + historial de 15 días + envío
+src/notifier.js          catálogo de avisos por categoría + transiciones + historial + envío
+src/error-codes.js       códigos HMS y print_error → descripción oficial + qué hacer
+src/progress.js          la décima del porcentaje, interpolada del tiempo restante
+src/wake.js              franja horaria de vigilia (y la cuenta de horas que implica)
 src/push.js              Web Push (VAPID): alta, baja y purga de suscripciones muertas
 src/store.js             persistencia JSON de historial, ajustes, suscripciones y fase
 src/session-store.js     almacén de sesiones de express-session sobre el JSON
@@ -408,6 +519,9 @@ public/sw.js             Service Worker: caché del armazón + recepción de pus
 public/manifest.webmanifest   manifiesto de la PWA
 agent/camera-agent.js    agente de cámara para la LAN
 tools/make-icons.mjs     genera favicon e iconos (figura de la marca)
+tools/fetch-error-codes.mjs   descarga el catálogo oficial de errores de Bambu Lab
+data/bambu-errors.json   ese catálogo, versionado: 2.015 códigos HMS + 490 de impresión
+.github/workflows/keepalive.yml   cron gratuito que da el primer ping del día
 ```
 
 ### Iconografía
@@ -451,7 +565,8 @@ los colores, regenera y súbelo: los PNG están versionados.
 | DELETE | `/api/admin/devices/:id` | Quitarlo del registro (requiere admin) |
 | POST | `/api/camera` | El agente sube un JPEG (`{ image: base64 }`) |
 | GET | `/api/camera.jpg` | Último snapshot |
-| GET | `/api/health` | Healthcheck (incluye fase y si está despierto a propósito) |
+| GET | `/api/health` | Healthcheck (fase, motivo de la vigilia, horas/mes estimadas, catálogo de errores) |
+| GET | `/api/wake` | Puerta del despertador externo: sin auth, responde si estaba dormido |
 | WS | `/ws` | Estado en vivo |
 
 ---

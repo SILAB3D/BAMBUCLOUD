@@ -335,8 +335,14 @@ button.primary:active{transform:scale(.98)}
 .ring .readout{position:absolute;inset:0;display:flex;flex-direction:column;
   align-items:center;justify-content:center;pointer-events:none;text-align:center;padding:0 12%}
 .ring .readout b{font-size:clamp(33px,7.6vw,52px);font-weight:660;line-height:1;
-  letter-spacing:-.035em}
+  letter-spacing:-.035em;
+  /* Cifras de ancho fijo: con la decima corriendo, sin esto el numero baila
+     de lado a lado dentro del anillo en cada actualizacion. */
+  font-variant-numeric:tabular-nums}
 .ring .readout b i{font-size:.42em;font-style:normal;color:var(--dim);margin-left:2px}
+/* Mas grande que el signo de % (es un digito, no un simbolo) pero por debajo
+   del entero: la decima acompana, no compite con el numero. */
+.ring .readout b i#pct-dec{font-size:.55em;margin-left:0;letter-spacing:-.02em}
 .ring .readout small{font-size:clamp(10px,1.6vw,11.5px);color:var(--faint);margin-top:7px;
   letter-spacing:.04em}
 .ph-ready .readout b{font-size:clamp(24px,5vw,36px);color:var(--accent)}
@@ -552,6 +558,12 @@ button.primary:active{transform:scale(.98)}
 .feed li:last-child{border-bottom:none}
 .feed time{color:var(--faint);font-size:11.5px;flex:none;font-variant-numeric:tabular-nums}
 .feed li span{min-width:0;word-break:break-word}
+/* Un error traducido son tres cosas: que ha pasado (la linea de arriba, con el
+   color de su gravedad), el detalle oficial de Bambu si aporta algo mas, y que
+   hacer. Lo ultimo es lo unico accionable, asi que se marca con la flecha. */
+.feed .why{display:block;font-size:12px;color:var(--dim);margin-top:3px;line-height:1.45}
+.feed .fix{display:block;font-size:12px;color:var(--faint);margin-top:3px;line-height:1.45}
+.feed .fix::before{content:"→ ";color:var(--accent)}
 .feed .error{color:var(--err)}
 .feed .warning{color:var(--warn)}
 .feed .success{color:var(--ok)}
@@ -603,6 +615,15 @@ button.primary:active{transform:scale(.98)}
 .opt .txt small{display:block;font-size:11.5px;color:var(--faint);margin-top:2px;line-height:1.4}
 .opt.sub{padding-left:14px;border-left:2px solid var(--line);margin-left:2px}
 .opt.sub .txt b{font-weight:500;font-size:13px}
+
+/* Categorias de avisos: la cabecera es el interruptor maestro del grupo y lo
+   que va debajo, sus miembros. El hueco entre grupos es lo que hace que se lean
+   como dos bloques y no como una lista larga con dos titulos sueltos. */
+.cat+.cat{margin-top:4px}
+.cat+.cat>.opt:first-child{border-top:1px solid var(--line)}
+/* Grupo apagado: los suyos se apagan visualmente enteros, etiqueta incluida,
+   para que se vea que no es que esten desactivados uno a uno. */
+.cat.off .opt.sub{opacity:.45}
 
 /* Interruptor */
 .sw{
@@ -983,7 +1004,10 @@ button.primary:active{transform:scale(.98)}
                 </g>
               </svg>
               <div class="readout">
-                <b><span id="pct">—</span><i id="pct-sign" class="hidden">%</i></b>
+                <!-- La decima va en su propio elemento y a menor tamano: con
+                     "100.0" a cuerpo completo el numero no cabe en el anillo. -->
+                <b><span id="pct">—</span><i id="pct-dec" class="hidden"></i><i
+                   id="pct-sign" class="hidden">%</i></b>
                 <small id="ring-label">esperando datos</small>
               </div>
             </div>
@@ -1283,6 +1307,7 @@ let lastCycle = null;      // fase del ciclo (impresion / enfriamiento / retirad
 let pushConfig = { supported: false, publicKey: null, devices: 0 };
 let settings = null;
 let triggerCatalog = [];   // tipos de aviso que ofrece el servidor
+let categoryCatalog = [];  // y las categorias en las que se agrupan
 let swReg = null;
 
 let wsOpen = false;
@@ -1489,7 +1514,10 @@ function renderFree() {
 }
 
 function renderPrinting(s) {
-  const pct = s?.percent ?? null;
+  // `percentFine` es el mismo porcentaje de la impresora con la decima
+  // interpolada por el servidor (ver src/progress.js). Si no viene —un estado
+  // antiguo del historial, o el servidor sin actualizar— se usa el entero.
+  const pct = s?.percentFine ?? s?.percent ?? null;
   // El anillo dice que esta pasando, no que representa el numero: el % ya se
   // entiende solo, y "completado" no aportaba nada.
   const label = s?.state === 'PAUSE' ? 'en pausa'
@@ -1498,7 +1526,10 @@ function renderPrinting(s) {
     : (s?.stateText || '—');
   // En reposo no hay actividad que anunciar: la pestaña vuelve a su nombre.
   const idle = !s?.printing && s?.state !== 'PAUSE';
-  setRing(pct, label, { tab: idle ? null : label[0].toUpperCase() + label.slice(1) });
+  setRing(pct, label, {
+    tab: idle ? null : label[0].toUpperCase() + label.slice(1),
+    decimals: true,
+  });
 
   $('tile1-label').textContent = 'Restante';
   $('tile1-value').textContent = s?.remainingText || '—';
@@ -1577,11 +1608,11 @@ const TAB_IDLE = 'Bambu Lab · Estado';
  * del fichero, que ademas venia tan largo que se cortaba antes de llegar a
  * nada util.
  */
-function setTabTitle(pct, activity) {
+function setTabTitle(pct, activity, decimals = false) {
   if (!activity) { document.title = TAB_IDLE; return; }
   document.title = pct == null
     ? `${activity} · Bambu Lab`
-    : `${Math.round(pct)}% · ${activity}`;
+    : `${decimals ? pct.toFixed(1) : Math.round(pct)}% · ${activity}`;
 }
 
 /**
@@ -1590,18 +1621,23 @@ function setTabTitle(pct, activity) {
  * @param {object} [opts]
  * @param {string} [opts.text] texto que sustituye al numero ("Lista")
  * @param {string} [opts.tab]  actividad para la pestaña del navegador
+ * @param {boolean} [opts.decimals] mostrar la decima. Solo el progreso de
+ *   impresion la tiene; el enfriamiento avanza por reloj y una decima ahi solo
+ *   seria un digito mas moviendose sin decir nada.
  */
 function setRing(pct, label, opts = {}) {
-  const { text, tab } = opts;
+  const { text, tab, decimals = false } = opts;
   // El titulo se pone aqui y no en renderState porque durante el enfriamiento
   // el porcentaje avanza por reloj: esta funcion se repinta cada segundo y el
   // otro sitio solo cuando llega un mensaje de la impresora.
   //
   // Con `text` el anillo no muestra un numero sino una palabra ("Lista"), asi
   // que la pestaña tampoco lleva porcentaje.
-  setTabTitle(text ? null : pct, tab);
+  setTabTitle(text ? null : pct, tab, decimals);
   $('ring-label').textContent = label;
+  const showDec = decimals && pct != null && !text;
   $('pct-sign').classList.toggle('hidden', pct == null || Boolean(text));
+  $('pct-dec').classList.toggle('hidden', !showDec);
 
   if (text) {
     $('pct').textContent = text;
@@ -1619,7 +1655,16 @@ function setRing(pct, label, opts = {}) {
     return;
   }
   animate('progress', pct, (v) => {
-    $('pct').textContent = String(Math.round(v));
+    if (showDec) {
+      // toFixed(1) y no dos operaciones sueltas: asi entero y decima salen
+      // siempre del mismo redondeo y no puede verse un "42" con un ".0" que
+      // en realidad venia de 41.97.
+      const [whole, dec] = v.toFixed(1).split('.');
+      $('pct').textContent = whole;
+      $('pct-dec').textContent = `.${dec}`;
+    } else {
+      $('pct').textContent = String(Math.round(v));
+    }
     $('arc').style.strokeDashoffset = String(RING_C * (1 - v / 100));
     $('head-g').setAttribute('transform', `rotate(${v * 3.6} 70 70)`);
     $('head').setAttribute('opacity', v > 0.5 && v < 99.5 ? '1' : '0');
@@ -2362,8 +2407,13 @@ function paintFeed() {
       currentDay = day;
       out.push(`<li class="feed-day">${escapeHtml(dayLabel(e.at))}</li>`);
     }
+    // `detail` y `remedy` solo los traen los eventos con codigo de error
+    // traducido; el resto sigue siendo una linea y ya.
+    const why = e.detail && e.detail !== e.text
+      ? `<small class="why">${escapeHtml(e.detail)}</small>` : '';
+    const fix = e.remedy ? `<small class="fix">${escapeHtml(e.remedy)}</small>` : '';
     out.push(`<li><time>${clockTime(e.at)}</time>
-      <span class="${escapeAttr(e.level || '')}">${escapeHtml(e.text)}</span></li>`);
+      <span class="${escapeAttr(e.level || '')}">${escapeHtml(e.text)}${why}${fix}</span></li>`);
   }
   feed.innerHTML = out.join('');
 }
@@ -2690,12 +2740,17 @@ function notifyBrowser(e) {
   if (document.visibilityState === 'visible') return; // ya lo esta viendo
   // Con Service Worker el aviso lo muestra el, para que el clic reenfoque la
   // PWA en vez de abrir una pestana suelta.
+  // El "que hacer" viaja en el cuerpo del aviso: si hay que ir a la impresora,
+  // que se sepa sin tener que abrir la app primero.
+  const body = [e.text, e.detail !== e.text ? e.detail : null, e.remedy && `👉 ${e.remedy}`]
+    .filter(Boolean)
+    .join('\n');
   if (swReg) {
     swReg.showNotification('Bambu Lab', {
-      body: e.text, tag: e.type, icon: '/icon-192.png', badge: '/badge-96.png',
+      body, tag: e.type, icon: '/icon-192.png', badge: '/badge-96.png',
     });
   } else {
-    new Notification('Bambu Lab', { body: e.text, tag: e.type });
+    new Notification('Bambu Lab', { body, tag: e.type });
   }
 }
 
@@ -2972,6 +3027,7 @@ async function showAdminPanel() {
     const r = await fetch('/api/settings').then((x) => x.json());
     settings = r.settings;
     triggerCatalog = r.triggers || triggerCatalog;
+    categoryCatalog = r.categories || categoryCatalog;
     pushConfig = r.push || pushConfig;
     if (r.devices) renderDevices(r.devices);
     const channels = Object.entries(r.channels || {}).filter(([, v]) => v).map(([k]) => k);
@@ -2997,39 +3053,94 @@ async function showAdminPanel() {
   paintSettings();
 }
 
-/** Construye un interruptor por tipo de aviso. Solo la primera vez. */
+/**
+ * Construye la lista de avisos agrupada en categorias. Solo la primera vez.
+ *
+ * Cada categoria es una cabecera con su propio interruptor —la llave maestra
+ * del grupo— y debajo los avisos que contiene, cada uno con el suyo. Apagar la
+ * categoria calla el grupo entero sin tocar lo que tenia encendido cada aviso,
+ * asi que volver a encenderla lo devuelve tal cual estaba.
+ */
 function buildTriggerList() {
   const box = $('trigger-list');
   if (!box || box.childElementCount || !triggerCatalog.length) return;
-  box.innerHTML = triggerCatalog
-    .map(
-      (t) => `<div class="opt sub">
-        <div class="txt">
-          <b>${escapeHtml(t.label)}</b>
-          <small>${escapeHtml(t.desc || '')}</small>
-        </div>
-        <button class="sw" data-trigger="${escapeAttr(t.key)}" role="switch"
-                aria-checked="false" aria-label="${escapeAttr(t.label)}"></button>
-      </div>`,
-    )
+
+  // Una categoria sin ficha (un tipo nuevo que el servidor aun no agrupa) no
+  // puede quedarse fuera de la pantalla: cae en un bloque sin cabecera.
+  const groups = categoryCatalog.length ? categoryCatalog : [{ key: null, label: '', desc: '' }];
+
+  box.innerHTML = groups
+    .map((c) => {
+      const members = triggerCatalog.filter((t) =>
+        c.key ? t.category === c.key : !categoryCatalog.some((x) => x.key === t.category),
+      );
+      if (!members.length) return '';
+      const head = c.key
+        ? `<div class="opt">
+             <div class="txt">
+               <b>${escapeHtml(c.label)}</b>
+               <small>${escapeHtml(c.desc || '')}</small>
+             </div>
+             <button class="sw" data-group="${escapeAttr(c.key)}" role="switch"
+                     aria-checked="false" aria-label="${escapeAttr(c.label)}"></button>
+           </div>`
+        : '';
+      const rows = members
+        .map(
+          (t) => `<div class="opt sub">
+            <div class="txt">
+              <b>${escapeHtml(t.label)}</b>
+              <small>${escapeHtml(t.desc || '')}</small>
+            </div>
+            <button class="sw" data-trigger="${escapeAttr(t.key)}" role="switch"
+                    aria-checked="false" aria-label="${escapeAttr(t.label)}"></button>
+          </div>`,
+        )
+        .join('');
+      return `<div class="cat" data-cat="${escapeAttr(c.key || '')}">${head}${rows}</div>`;
+    })
     .join('');
-  box.querySelectorAll('[data-trigger]').forEach((el) => {
+
+  box.querySelectorAll('[data-group]').forEach((el) => {
     el.onclick = () => {
       if (!settings?.enabled) return;
+      const key = el.dataset.group;
+      saveSettings({ groups: { [key]: settings.groups?.[key] === false } });
+    };
+  });
+  box.querySelectorAll('[data-trigger]').forEach((el) => {
+    el.onclick = () => {
+      if (el.disabled) return;
       const key = el.dataset.trigger;
       saveSettings({ triggers: { [key]: settings.triggers?.[key] === false } });
     };
   });
 }
 
+/** A que categoria pertenece un tipo de aviso, segun el catalogo del servidor. */
+function categoryOf(key) {
+  return triggerCatalog.find((t) => t.key === key)?.category || null;
+}
+
 function paintSettings() {
   if (!settings) return;
   buildTriggerList();
   setSwitch($('sw-enabled'), settings.enabled);
-  for (const el of $('trigger-list').querySelectorAll('[data-trigger]')) {
-    setSwitch(el, settings.triggers?.[el.dataset.trigger] !== false);
-    // Los disparadores individuales no pintan nada si el maestro esta apagado.
+
+  const box = $('trigger-list');
+  for (const el of box.querySelectorAll('[data-group]')) {
+    const on = settings.groups?.[el.dataset.group] !== false;
+    setSwitch(el, on);
+    // Las categorias no pintan nada si el maestro esta apagado.
     el.disabled = !settings.enabled;
+    el.closest('.cat')?.classList.toggle('off', !on || !settings.enabled);
+  }
+  for (const el of box.querySelectorAll('[data-trigger]')) {
+    const cat = categoryOf(el.dataset.trigger);
+    const groupOn = !cat || settings.groups?.[cat] !== false;
+    setSwitch(el, settings.triggers?.[el.dataset.trigger] !== false);
+    // Un aviso solo se puede tocar si sus dos llaves de arriba estan abiertas.
+    el.disabled = !settings.enabled || !groupOn;
   }
 }
 

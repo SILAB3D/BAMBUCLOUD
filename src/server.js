@@ -22,13 +22,16 @@ import crypto from 'node:crypto';
 
 import { BambuCloud } from './bambu-cloud.js';
 import { normalize } from './normalize.js';
-import { Notifier, HISTORY_DAYS, TRIGGERS } from './notifier.js';
+import { Notifier, HISTORY_DAYS, TRIGGERS, CATEGORIES } from './notifier.js';
 import { Store } from './store.js';
 import { JsonSessionStore } from './session-store.js';
 import { KeepCookie, KEEP_MAX_AGE_MS } from './keep-cookie.js';
 import { LoginGuard, guarded } from './rate-limit.js';
 import { PushHub } from './push.js';
 import { JobCycle } from './job-cycle.js';
+import { FineProgress } from './progress.js';
+import { ERROR_DB_INFO } from './error-codes.js';
+import { parseWindow, insideWindow, estimateMonthlyHours } from './wake.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -98,6 +101,11 @@ const notifier = new Notifier({
 });
 
 const jobCycle = new JobCycle({ coolMs: COOL_MS, store });
+
+// Deliberadamente sin persistir: su estado es "cuando empezo el punto
+// porcentual en curso", y tras un reinicio eso ya no se sabe. Arranca del
+// entero que reporte la impresora y en un punto vuelve a tener decima.
+const fineProgress = new FineProgress();
 
 const app_state = {
   cloud: null,
@@ -196,6 +204,9 @@ function wireCloud(cloud) {
   cloud.on('report', (_msg, state) => {
     if (!state.print) return;
     const norm = normalize(state);
+    // La impresora solo publica el porcentaje entero; la decima se interpola
+    // aqui, fuera de normalize(), que es una funcion pura. Ver src/progress.js.
+    norm.percentFine = fineProgress.update(norm);
     app_state.normalized = norm;
     notifier.update(norm, app_state.printer?.name || 'Bambu Lab A1');
     // El primer report tras arrancar describe el pasado, no una transicion:
@@ -388,8 +399,22 @@ async function refreshTask() {
 // ni se envian avisos. Mientras hay un trabajo en curso el servidor se pide a
 // si mismo /api/health y con eso cuenta como trafico entrante.
 //
-// Solo mientras imprime o enfria, a proposito: despierto 24/7 son ~720 h/mes y
-// el plan gratuito da 750, sin margen para un despiste.
+// Ademas de mientras imprime o enfria, se sostiene la vigilia dentro de una
+// FRANJA HORARIA (WAKE_WINDOW, por defecto 9-23 hora de Madrid). El motivo es
+// el unico agujero que el auto-ping no puede tapar por si solo: dormido no
+// corre nada, asi que si una impresion empieza con el servicio caido, nadie se
+// entera hasta que algo lo despierte desde fuera. Despierto durante la franja,
+// ese arranque se detecta al momento, y a partir de ahi la impresion se
+// sostiene sola aunque acabe a las 4 de la manana.
+//
+// Lo que NO puede hacer este proceso, y conviene tener claro: despertarse solo.
+// El primer estimulo del dia tiene que venir de fuera (un cron gratuito
+// apuntando a /api/wake; ver .github/workflows/keepalive.yml y el README).
+// A partir de ese primer ping, la franja se sostiene sin ayuda.
+//
+// La cuenta: 9-23 son 14 h/dia, ~420 h/mes de las 750 que regala Render, con
+// sitio de sobra para las impresiones nocturnas. Despierto 24/7 serian ~730 h,
+// que entra por los pelos y sin margen para un despiste.
 //
 // El enfriamiento necesita su propia cadena de pings porque el aviso de "ya
 // puedes retirarla" lo dispara un temporizador nuestro: si el servicio se
@@ -404,6 +429,13 @@ const COOL_KEEPALIVE_MS = Number(process.env.COOLDOWN_KEEPALIVE_MS || 15 * 60_00
 // PAUSE entra: el trabajo sigue vivo y queremos avisar cuando se reanude.
 const ACTIVE_STATES = new Set(['RUNNING', 'PREPARE', 'PAUSE']);
 
+// Franja en la que merece la pena estar despierto aunque no haya nada
+// imprimiendo, para pillar el ARRANQUE de un trabajo en el momento y no en el
+// siguiente despertar. Ver src/wake.js para el por que y para la cuenta de
+// horas. "off" la desactiva y deja el comportamiento anterior.
+const WAKE_WINDOW = parseWindow(process.env.WAKE_WINDOW ?? '9-23');
+const WAKE_TZ = process.env.WAKE_TZ || 'Europe/Madrid';
+
 function printJobActive() {
   return ACTIVE_STATES.has(app_state.normalized?.state);
 }
@@ -411,6 +443,22 @@ function printJobActive() {
 /** Hay algo que vigilar: imprimiendo o esperando a que la cama se enfrie. */
 function needsWakefulness() {
   return printJobActive() || jobCycle.phase === 'cooling';
+}
+
+/** Dentro de la franja de vigilia preventiva. */
+function inWakeWindow() {
+  return insideWindow(WAKE_WINDOW, WAKE_TZ);
+}
+
+/**
+ * Por que se sigue despierto ahora mismo, o null si no hay razon.
+ * Devuelve texto porque va tal cual al log y a /api/health.
+ */
+function wakeReason() {
+  if (printJobActive()) return 'imprimiendo';
+  if (jobCycle.phase === 'cooling') return 'enfriando';
+  if (inWakeWindow()) return 'franja de vigilancia';
+  return null;
 }
 
 async function ping(reason) {
@@ -427,8 +475,9 @@ async function ping(reason) {
 }
 
 async function keepAlive() {
-  if (!needsWakefulness()) return;
-  await ping(jobCycle.phase === 'cooling' ? 'enfriando' : 'imprimiendo');
+  const reason = wakeReason();
+  if (!reason) return;
+  await ping(reason);
 }
 
 let coolPingTimer = null;
@@ -774,7 +823,9 @@ app.get('/api/admin/status', requireAuth, (req, res) => {
 app.get('/api/settings', requireAuth, (req, res) => {
   res.json({
     settings: notifier.settings,
-    // El cliente dibuja un interruptor por entrada: la lista manda.
+    // El cliente dibuja un interruptor por entrada, agrupados por categoria:
+    // las dos listas mandan.
+    categories: CATEGORIES,
     triggers: TRIGGERS,
     progressStep: notifier.progressStep,
     push: pushInfo(),
@@ -868,8 +919,46 @@ app.get('/api/health', (req, res) => {
     coolingRemainingMs: jobCycle.coolingRemainingMs(),
     keepAlive: Boolean(KEEPALIVE_URL),
     awake: needsWakefulness(),
+    wake: {
+      reason: wakeReason(),
+      window: WAKE_WINDOW ? `${WAKE_WINDOW.start}-${WAKE_WINDOW.end}` : null,
+      tz: WAKE_TZ,
+      inWindow: inWakeWindow(),
+      // Horas de instancia al mes que implica la franja, para poder mirar el
+      // consumo en vez de suponerlo. Render regala 750.
+      estimatedMonthlyHours: estimateMonthlyHours(WAKE_WINDOW),
+    },
+    errorCodes: ERROR_DB_INFO,
     pushDevices: push.count,
     pushActive: push.activeCount,
+  });
+});
+
+/**
+ * Puerta para el despertador externo.
+ *
+ * Un proceso dormido no puede despertarse solo (ver el bloque de keep-alive):
+ * el primer estimulo del dia tiene que llegar de fuera. Esta ruta existe para
+ * eso y hace lo minimo posible — la peticion en si YA ha despertado el
+ * servicio antes de llegar aqui; lo demas es solo poder comprobar desde el
+ * cron que ha servido de algo.
+ *
+ * Sin autenticacion a proposito: no expone nada que no exponga ya /api/health
+ * y tiene que poder llamarla un cron gratuito sin secretos que rotar.
+ */
+app.get('/api/wake', (req, res) => {
+  const reason = wakeReason();
+  res.set('Cache-Control', 'no-store');
+  res.json({
+    ok: true,
+    // false = el servicio estaba dormido y esta peticion es justo lo que hacia
+    // falta; true = ya estaba en pie y el ping ha sido redundante.
+    wasAwake: Math.round(process.uptime()) > 60,
+    reason,
+    inWindow: inWakeWindow(),
+    jobActive: printJobActive(),
+    phase: jobCycle.phase,
+    uptimeSec: Math.round(process.uptime()),
   });
 });
 
@@ -915,11 +1004,24 @@ server.listen(PORT, () => {
     );
   }
   if (push.enabled) console.log(`[push] activo, ${push.count} dispositivo(s) suscrito(s)`);
+  console.log(
+    `[errores] catálogo oficial v${ERROR_DB_INFO.version} (${ERROR_DB_INFO.lang}): ` +
+      `${ERROR_DB_INFO.hmsCount} códigos HMS, ${ERROR_DB_INFO.printCount} de impresión`,
+  );
   if (KEEPALIVE_URL) {
     console.log(
       `[keepalive] activo cada ${Math.round(KEEPALIVE_MS / 60000)} min mientras imprime, ` +
         `y cada ${Math.round(COOL_KEEPALIVE_MS / 60000)} min mientras enfria`,
     );
+    if (WAKE_WINDOW) {
+      console.log(
+        `[keepalive] franja de vigilancia ${WAKE_WINDOW.start}:00-${WAKE_WINDOW.end}:00 ` +
+          `(${WAKE_TZ}) · ~${estimateMonthlyHours(WAKE_WINDOW)} h/mes de las 750 del plan free · ` +
+          'necesita un cron externo que llame a /api/wake para el primer ping del día',
+      );
+    } else {
+      console.log('[keepalive] sin franja de vigilancia (WAKE_WINDOW desactivada)');
+    }
     setInterval(keepAlive, KEEPALIVE_MS);
     // El proceso pudo caerse a mitad del enfriamiento: retomamos la cadena.
     armCoolingKeepAlive();

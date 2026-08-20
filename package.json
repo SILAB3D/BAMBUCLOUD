@@ -8,6 +8,7 @@
     "start": "node src/server.js",
     "agent": "node agent/camera-agent.js",
     "check": "node --check src/server.js",
+    "errors": "node tools/fetch-error-codes.mjs",
     "vapid": "node -e \"console.log(require('web-push').generateVAPIDKeys())\""
   },
   "engines": {
