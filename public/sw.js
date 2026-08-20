@@ -13,7 +13,7 @@
  * dato viejo es peor que ningun dato.
  */
 
-const CACHE = 'bambu-shell-v8';
+const CACHE = 'bambu-shell-v9';
 // Sin '/index.html': el servidor lo entrega en '/', y pedir los dos en el
 // mismo addAll hace que el navegador aborte la instalacion entera con
 // "Entry already exists". Un Service Worker que no instala no solo deja de
@@ -120,7 +120,24 @@ self.addEventListener('push', (event) => {
     data: { url: data.url || '/' },
     vibrate: [90, 60, 90],
   };
-  event.waitUntil(self.registration.showNotification(title, options));
+  // Acuse de recibo. El servidor solo sabe que el push service ACEPTO el
+  // mensaje, no que se haya visto: sin esto, un movil cuyo fabricante mata los
+  // avisos en segundo plano (los Xiaomi / Redmi son el caso de manual) se ve
+  // en el panel igual que uno que funciona. `d` lo pone el servidor por
+  // dispositivo, que es como el aviso sabe de quien es sin conocer su endpoint.
+  //
+  // Va DESPUES de mostrar la notificacion y con su propio catch: quedarse sin
+  // red no puede impedir que el aviso se pinte, que es lo unico imprescindible.
+  const ack = data.d
+    ? fetch('/api/push/ack', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ d: data.d }),
+        keepalive: true,
+      }).catch(() => {})
+    : Promise.resolve();
+
+  event.waitUntil(self.registration.showNotification(title, options).then(() => ack));
 });
 
 self.addEventListener('notificationclick', (event) => {

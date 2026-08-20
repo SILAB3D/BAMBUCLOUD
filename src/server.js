@@ -704,10 +704,37 @@ app.post('/api/push/subscribe', requireAuth, (req, res) => {
   const result = push.subscribe(req.body?.subscription || req.body, {
     ua: req.get('user-agent') || '',
     standalone: Boolean(req.body?.info?.standalone),
+    // Chrome recorta el modelo del user-agent ("Android 10; K"), asi que el
+    // real solo llega si el cliente lo pregunta y lo manda aqui. Es lo que
+    // distingue un movil de otro en la lista y lo que decide que pasos dar
+    // cuando uno deja de recibir avisos.
+    model: String(req.body?.info?.model || '').slice(0, 40),
   });
   if (!result.ok) return res.status(400).json(result);
   broadcastDevices();
   res.json(result);
+});
+
+/**
+ * Acuse de recibo del Service Worker.
+ *
+ * Es la unica forma de saber si un aviso LLEGA de verdad. El push service
+ * responde 201 en cuanto acepta el mensaje, no cuando el movil lo pinta, asi
+ * que sin esto un telefono que tira los avisos en segundo plano —los Xiaomi /
+ * Redmi son el caso de manual— se ve exactamente igual que uno sano.
+ *
+ * Sin `requireAuth` a proposito: lo llama el Service Worker con la app cerrada
+ * y puede que con la sesion caducada, que es justo cuando mas importa saberlo.
+ * No lee ni devuelve nada, solo sella una fecha en un id que ya tenia que
+ * conocer; el peor uso posible es marcar como sano un movil que lo esta.
+ */
+app.post('/api/push/ack', (req, res) => {
+  const id = String(req.body?.d || '');
+  res.set('Cache-Control', 'no-store');
+  if (!id) return res.status(400).json({ error: 'Falta el identificador' });
+  const result = push.ack(id);
+  if (!result.ok) return res.status(404).json(result);
+  res.json({ ok: true });
 });
 
 app.post('/api/push/unsubscribe', requireAuth, (req, res) => {

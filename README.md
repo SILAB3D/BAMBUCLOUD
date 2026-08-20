@@ -363,6 +363,53 @@ HTTPS, servidor sin claves VAPID, «No molestar» del sistema y extensiones que 
 permiso sin preguntar. La navegación privada solo se **intuye** (cuota de disco recortada,
 ausencia de Service Worker): sirve para ordenar la lista, nunca para bloquear nada.
 
+### Cuando los avisos se activan pero no llegan con la app cerrada
+
+Es un problema **distinto** del anterior y el más difícil de ver, porque desde el servidor todo
+parece correcto: el permiso está dado, la suscripción es válida y el envío responde que sí.
+
+> El push service (FCM) responde `201` en cuanto **acepta** el mensaje, no cuando el móvil lo
+> muestra. Un teléfono que tira los avisos en segundo plano se veía exactamente igual que uno
+> sano: «enviado a 2 dispositivos» mientras uno de los dos llevaba semanas mudo.
+
+**Acuse de recibo.** El Service Worker avisa al servidor (`POST /api/push/ack`) en cuanto pinta
+la notificación. Es el único dato honesto sobre si los avisos llegan, y con él la lista de
+**Dispositivos** muestra una línea de estado por móvil:
+
+- `Recibiendo avisos · último confirmado hace 3 min` — funciona.
+- `Aviso enviado, esperando confirmación…` — normal durante unos segundos.
+- `No confirma los avisos desde hace 2 h` **(en rojo)** — aquí pasa algo, con un botón
+  **«¿Por qué?»** al lado.
+
+El margen antes de dar un aviso por perdido es de 10 minutos (`ACK_GRACE_MS` en `src/push.js`):
+FCM sí encola para un móvil sin cobertura y lo entrega al reconectar, y eso no es un fallo.
+
+**El botón de prueba ahora concluye.** Manda el aviso, espera hasta 12 s a los acuses y dice
+qué dispositivos lo han confirmado y cuáles no, en vez de quedarse en «enviado».
+
+**La causa casi nunca es el navegador**, sino la capa de ahorro de batería del fabricante, que
+mata el proceso que muestra el aviso. **Xiaomi / Redmi / POCO (MIUI y HyperOS) es el caso más
+agresivo, y viene así de fábrica.** En un Redmi hay que tocar, en *Ajustes → Aplicaciones →
+Administrar aplicaciones → la app*:
+
+1. **Inicio automático** (*Autostart*): activado.
+2. **Ahorro de batería** de esa app: «Sin restricciones».
+3. **Notificaciones**: activadas, y dentro, «Mostrar en pantalla de bloqueo» y «Notificaciones
+   flotantes».
+4. Y en la vista de recientes, **bloquear la tarjeta con el candado** para que borrar recientes
+   no se lleve por delante el proceso.
+
+Ojo con un despiste que lo explica todo: si el dashboard está **añadido a la pantalla de
+inicio**, Android lo registra como una app aparte (WebAPK) con sus propios permisos. Ajustar la
+batería de Chrome no le afecta — hay que buscar el icono del dashboard en la lista de apps.
+
+La ventana **«¿Por qué?»** da estos pasos ya adaptados a la marca del móvil concreto (Xiaomi,
+Samsung, Huawei, Oppo/Realme/OnePlus, Vivo, iPhone o Android genérico). Para saber la marca no
+basta el user-agent: Chrome lo recorta por privacidad y manda `Android 10; K` para todos los
+teléfonos del mundo, así que el modelo se pide con `navigator.userAgentData` y se envía en el
+alta. Es también lo que hace que la lista diga *Chrome · Redmi Note 12* en vez de tres
+*Chrome · Android* idénticos.
+
 ### Ventana de bienvenida
 
 Trata dos asuntos distintos y con distinto peso, y se nota en el diseño:
@@ -508,7 +555,7 @@ src/notifier.js          catálogo de avisos por categoría + transiciones + his
 src/error-codes.js       códigos HMS y print_error → descripción oficial + qué hacer
 src/progress.js          la décima del porcentaje, interpolada del tiempo restante
 src/wake.js              franja horaria de vigilia (y la cuenta de horas que implica)
-src/push.js              Web Push (VAPID): alta, baja y purga de suscripciones muertas
+src/push.js              Web Push (VAPID): alta, baja, acuse de recibo y purga de suscripciones
 src/store.js             persistencia JSON de historial, ajustes, suscripciones y fase
 src/session-store.js     almacén de sesiones de express-session sobre el JSON
 src/keep-cookie.js       cookie firmada de 30 días: la sesión sobrevive sin disco
@@ -559,6 +606,7 @@ los colores, regenera y súbelo: los PNG están versionados.
 | POST | `/api/admin/bambu-login` | Rehacer el login sin reiniciar (requiere admin) |
 | GET | `/api/push/key` | Clave pública VAPID |
 | POST | `/api/push/subscribe` | Alta de un dispositivo (`{ subscription, info }`) |
+| POST | `/api/push/ack` | Acuse del Service Worker al mostrar un aviso (`{ d }`, sin auth) |
 | POST | `/api/push/test` | Aviso de prueba (requiere admin; `{ id }` para uno solo) |
 | GET | `/api/admin/devices` | Dispositivos suscritos (requiere admin) |
 | PATCH | `/api/admin/devices/:id` | Activar o silenciar uno (`{ enabled }`, requiere admin) |

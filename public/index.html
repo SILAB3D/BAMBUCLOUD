@@ -648,6 +648,16 @@ button.primary:active{transform:scale(.98)}
 .dev .txt b{display:block;font-size:13px;font-weight:600;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dev .txt small{display:block;font-size:11px;color:var(--faint);margin-top:2px}
+/* Estado de entrega: la unica linea del panel que dice si los avisos LLEGAN,
+   frente a si se han enviado. Un movil mudo se marca en rojo porque es un
+   fallo real y silencioso, no un matiz. */
+.dev .txt .deliv{display:block;font-size:11px;margin-top:3px;color:var(--faint)}
+.dev .txt .deliv.ok{color:var(--ok)}
+.dev .txt .deliv.silent{color:var(--err);font-weight:600}
+.dev .txt .deliv button{
+  background:none;border:0;padding:0;margin-left:5px;cursor:pointer;font:inherit;
+  color:var(--accent);text-decoration:underline;text-underline-offset:2px;
+}
 /* El dispositivo desde el que se mira el panel, para no silenciarlo por error.
    Va en la linea secundaria y no junto al nombre: ahi el `text-overflow` de
    los nombres largos se lo comeria en una pantalla estrecha. */
@@ -1252,7 +1262,10 @@ button.primary:active{transform:scale(.98)}
 <div id="push-help" class="modal hidden">
   <div class="sheet">
     <div class="sheet-head">
-      <h2>No se han podido activar</h2>
+      <!-- El titulo cambia: la misma ventana sirve para "no se han podido
+           activar" y para "activados pero no llegan", que son dos problemas
+           distintos con dos listas de causas distintas. -->
+      <h2 id="push-help-title">No se han podido activar</h2>
       <button class="close" id="push-help-close" aria-label="Cerrar">
         <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
       </button>
@@ -1308,6 +1321,7 @@ let pushConfig = { supported: false, publicKey: null, devices: 0 };
 let settings = null;
 let triggerCatalog = [];   // tipos de aviso que ofrece el servidor
 let categoryCatalog = [];  // y las categorias en las que se agrupan
+let lastDevices = [];      // ultima lista de dispositivos suscritos pintada
 let swReg = null;
 
 let wsOpen = false;
@@ -2472,6 +2486,28 @@ let pushState = { ok: false, reason: 'init', detail: 'Sin comprobar todavía' };
  * @param {object} [opts]
  * @param {boolean} [opts.interactive] pedir el permiso si aun no se ha dado
  */
+/**
+ * Modelo del aparato ("Redmi Note 12"), si el navegador lo suelta.
+ *
+ * Hace falta para dos cosas: distinguir un móvil de otro en la lista de
+ * dispositivos, y saber de qué marca es para dar los pasos correctos cuando no
+ * le llegan los avisos — el ajuste que hay que tocar en un Xiaomi no se llama
+ * igual ni está en el mismo sitio que en un Samsung.
+ *
+ * No basta con el user-agent: Chrome lo recorta por privacidad y manda
+ * "Android 10; K" para todos los teléfonos del mundo. El modelo real solo se
+ * consigue pidiéndolo aquí, y solo lo dan los navegadores basados en Chromium;
+ * en el resto se devuelve vacío y el servidor tira del user-agent.
+ */
+async function deviceModel() {
+  try {
+    const d = await navigator.userAgentData?.getHighEntropyValues?.(['model']);
+    return d?.model || '';
+  } catch {
+    return '';
+  }
+}
+
 async function ensurePush({ interactive = false } = {}) {
   const fail = (reason, detail) => {
     pushState = { ok: false, reason, detail };
@@ -2533,7 +2569,10 @@ async function ensurePush({ interactive = false } = {}) {
       headers: { 'Content-Type': 'application/json' },
       // El nombre del dispositivo lo compone el servidor con el user-agent de
       // la cabecera; desde aqui solo va lo que esa cabecera no cuenta.
-      body: JSON.stringify({ subscription: sub.toJSON(), info: { standalone: IS_STANDALONE } }),
+      body: JSON.stringify({
+        subscription: sub.toJSON(),
+        info: { standalone: IS_STANDALONE, model: await deviceModel() },
+      }),
     });
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
@@ -2673,11 +2712,158 @@ function pushCauses(state, priv) {
   return causes;
 }
 
-async function showPushHelp(state) {
-  const priv = await looksPrivate();
+// ===========================================================================
+// Diagnostico 2: los avisos SE ACTIVARON pero no llegan con la app cerrada
+//
+// Es un problema distinto del de arriba y con causas distintas. Aqui el
+// permiso esta dado, la suscripcion es buena y el servidor envia sin error:
+// lo que falla es el ultimo tramo, dentro del telefono.
+//
+// El culpable casi nunca es el navegador. Es la capa de ahorro de bateria del
+// fabricante, que mata el proceso que tiene que pintar el aviso en cuanto la
+// app lleva un rato cerrada. Xiaomi/Redmi (MIUI y HyperOS) es el caso mas
+// agresivo de todos —de fabrica, sin autoinicio, un Chrome cerrado deja de
+// recibir push— pero Huawei, Oppo, Vivo y Samsung hacen versiones mas suaves
+// de lo mismo. Android puro (Pixel, Motorola) no suele dar guerra.
+//
+// Por eso los pasos van por marca: "revisa el ahorro de batería" no le sirve a
+// nadie cuando el ajuste que importa se llama "Inicio automático" y está tres
+// menus adentro.
+// ===========================================================================
+
+/**
+ * Pasos concretos por fabricante para que los avisos sobrevivan a cerrar la app.
+ *
+ * @param {string|null} vendor  el que deduce el servidor del user-agent
+ * @param {boolean} standalone  instalada en la pantalla de inicio (WebAPK)
+ */
+function deliveryCauses(vendor, standalone) {
+  const causes = [];
+  const add = (title, text, likely = false) => causes.push({ title, text, likely });
+
+  // Esto va primero en Android pase lo que pase: es el despiste que mas veces
+  // explica el sintoma completo.
+  if (standalone && vendor && vendor !== 'ios') {
+    add(
+      'Los ajustes hay que tocarlos en la app instalada, no en Chrome',
+      'Al añadir el dashboard a la pantalla de inicio, Android lo registra como una app '
+        + 'aparte con su propio nombre y sus propios permisos. Ajustar la batería de Chrome no '
+        + 'le afecta: busca el icono de este dashboard en la lista de aplicaciones.',
+      true,
+    );
+  }
+
+  if (vendor === 'xiaomi') {
+    add(
+      'MIUI / HyperOS está matando la app en segundo plano',
+      'Es la causa en la práctica totalidad de los Xiaomi, Redmi y POCO, y viene así de '
+        + 'fábrica. Hay que tocar tres cosas, las tres en Ajustes → Aplicaciones → '
+        + `Administrar aplicaciones → ${standalone ? 'el dashboard' : 'Chrome'}: `
+        + '1) "Inicio automático" (o "Autostart"): ACTIVADO. '
+        + '2) "Ahorro de batería" (dentro de la app): pon "Sin restricciones". '
+        + '3) "Notificaciones": activadas, y dentro, activa también "Mostrar en pantalla de '
+        + 'bloqueo" y "Notificaciones flotantes".',
+      true,
+    );
+    add(
+      'Bloquea la app en la lista de recientes',
+      'Abre la vista de aplicaciones recientes, mantén pulsada la tarjeta del dashboard y '
+        + 'pulsa el candado. Sin eso, borrar recientes (o que MIUI lo haga solo) se lleva por '
+        + 'delante el proceso que recibe los avisos.',
+      true,
+    );
+    add(
+      'Desactiva el ahorro de batería agresivo del sistema',
+      'Ajustes → Batería → engranaje de arriba: quita "Ahorro de energía" y, si existe, '
+        + '"Restringir apps en segundo plano" o "Limpieza de memoria al bloquear pantalla".',
+    );
+  } else if (vendor === 'samsung') {
+    add(
+      'One UI ha puesto la app "en suspensión"',
+      'Ajustes → Batería → Límites de uso en segundo plano: comprueba que el dashboard (o '
+        + 'Chrome) no esté en "Apps en suspensión" ni en "Apps en suspensión profunda". '
+        + 'Después, Ajustes → Aplicaciones → la app → Batería → "Sin restricciones".',
+      true,
+    );
+  } else if (vendor === 'huawei') {
+    add(
+      'EMUI cierra la app al bloquear la pantalla',
+      'Ajustes → Batería → Inicio de aplicaciones: busca la app, desactiva "Gestión '
+        + 'automática" y activa las tres opciones (inicio automático, inicio secundario y '
+        + 'ejecución en segundo plano).',
+      true,
+    );
+  } else if (vendor === 'oppo' || vendor === 'realme' || vendor === 'oneplus') {
+    add(
+      'ColorOS / OxygenOS congela la app en segundo plano',
+      'Ajustes → Batería → Uso de batería en segundo plano: pon la app en "Permitir". '
+        + 'Y en Ajustes → Aplicaciones → la app → activa "Inicio automático".',
+      true,
+    );
+  } else if (vendor === 'vivo') {
+    add(
+      'Funtouch OS bloquea el segundo plano',
+      'Ajustes → Batería → Consumo de energía en segundo plano de alta velocidad: añade la '
+        + 'app. Y en iManager → Administrador de aplicaciones → Inicio automático, actívala.',
+      true,
+    );
+  } else if (vendor === 'ios') {
+    add(
+      'En iPhone, los avisos solo llegan a la app instalada',
+      'Tiene que estar añadida a la pantalla de inicio y abierta desde ese icono al menos una '
+        + 'vez. Comprueba además Ajustes → Notificaciones → el dashboard, y que el modo de bajo '
+        + 'consumo no esté permanentemente activo.',
+      true,
+    );
+  } else if (vendor) {
+    add(
+      'El ahorro de batería está matando la app en segundo plano',
+      'Ajustes → Aplicaciones → la app → Batería: ponla en "Sin restricciones". Muchos '
+        + 'fabricantes la restringen solos tras unos días sin abrirla.',
+      true,
+    );
+  }
+
+  // Comunes a todos, al final: son menos probables pero se comprueban en un momento.
+  add(
+    'El "No molestar" o el modo de descanso están filtrando los avisos',
+    'Comprueba que el dashboard esté en la lista de excepciones, o que el modo no esté activo '
+      + 'justo en las horas en las que se lanzan las impresiones.',
+  );
+  add(
+    'La app lleva mucho sin abrirse',
+    'Android e iOS revocan permisos y restringen apps que no se usan. Abrir el dashboard cada '
+      + 'pocos días basta para que no pase; el panel te dirá al momento si vuelve a confirmar.',
+  );
+  add(
+    'El dispositivo está silenciado desde este mismo panel',
+    'Comprueba el interruptor que tiene a su derecha en la lista de arriba. Silenciado sigue '
+      + 'suscrito, pero no recibe nada.',
+  );
+  return causes;
+}
+
+/** Ventana de ayuda para un dispositivo que no confirma los avisos. */
+function showDeliveryHelp(device) {
+  if (!device) return;
+  $('push-help-title').textContent = 'Los avisos no le llegan';
   $('push-help-detail').textContent =
-    state?.detail || 'El navegador no ha permitido activar los avisos.';
-  $('push-help-list').innerHTML = pushCauses(state || {}, priv)
+    `${device.label || 'Este dispositivo'} está suscrito y el servidor le envió el último aviso `
+    + `${agoText(device.lastSendAt)}, pero no ha confirmado haberlo mostrado. `
+    + 'Casi siempre es el ahorro de batería del móvil, no el navegador.';
+  $('push-help-list').innerHTML = renderCauses(
+    deliveryCauses(device.vendor, device.standalone),
+  );
+  // "Volver a intentarlo" reintenta la suscripcion de ESTE navegador, que aqui
+  // no es el que falla: en su lugar se manda un aviso de prueba al que falla.
+  $('push-help-retry').textContent = 'Enviar una prueba a este dispositivo';
+  $('push-help-retry').dataset.testDevice = device.id;
+  $('push-help').classList.remove('hidden');
+}
+
+/** Las causas se pintan igual vengan de donde vengan. */
+function renderCauses(causes) {
+  return causes
     .map(
       (c) => `<div class="cause${c.likely ? ' likely' : ''}">
         <b>${escapeHtml(c.title)}</b>
@@ -2685,6 +2871,16 @@ async function showPushHelp(state) {
       </div>`,
     )
     .join('');
+}
+
+async function showPushHelp(state) {
+  const priv = await looksPrivate();
+  $('push-help-title').textContent = 'No se han podido activar';
+  $('push-help-retry').textContent = 'Volver a intentarlo';
+  delete $('push-help-retry').dataset.testDevice;
+  $('push-help-detail').textContent =
+    state?.detail || 'El navegador no ha permitido activar los avisos.';
+  $('push-help-list').innerHTML = renderCauses(pushCauses(state || {}, priv));
   $('push-help').classList.remove('hidden');
 }
 
@@ -2693,6 +2889,13 @@ $('push-help').onclick = (e) => {
   if (e.target === $('push-help')) $('push-help').classList.add('hidden');
 };
 $('push-help-retry').onclick = async () => {
+  // En modo "los avisos no le llegan" el botón prueba el dispositivo que falla,
+  // que no es este: reintentar la suscripción de aquí no diría nada.
+  const target = $('push-help-retry').dataset.testDevice;
+  if (target) {
+    await testPush(target);
+    return;
+  }
   const r = await ensurePush({ interactive: true });
   syncNotifyButton();
   if (r.ok) {
@@ -3174,12 +3377,17 @@ function renderDevices(devices) {
     return;
   }
 
+  // La lista se guarda para que la ventana de ayuda pueda mirar el fabricante
+  // del dispositivo concreto sobre el que se ha pulsado.
+  lastDevices = devices;
+
   box.innerHTML = devices
     .map(
       (d) => `<div class="dev${d.id === myDeviceId ? ' is-me' : ''}">
         <div class="txt">
           <b>${escapeHtml(d.label || 'Dispositivo')}</b>
           <small>${escapeHtml(deviceSeen(d))}</small>
+          ${deviceDelivery(d)}
         </div>
         <button class="sw" data-device="${escapeAttr(d.id)}" role="switch"
                 aria-checked="${d.enabled ? 'true' : 'false'}"
@@ -3201,9 +3409,47 @@ function renderDevices(devices) {
   box.querySelectorAll('[data-device]').forEach((el) => {
     el.onclick = () => toggleDevice(el.dataset.device, el.getAttribute('aria-checked') !== 'true');
   });
+  box.querySelectorAll('[data-why]').forEach((el) => {
+    el.onclick = () => showDeliveryHelp(lastDevices.find((d) => d.id === el.dataset.why));
+  });
   box.querySelectorAll('[data-kill]').forEach((el) => {
     el.onclick = () => removeDevice(el.dataset.kill);
   });
+}
+
+/**
+ * La linea que dice si los avisos LLEGAN a ese aparato.
+ *
+ * El envio no prueba nada: el push service acepta el mensaje y responde que si
+ * tanto si el movil lo pinta como si su capa de ahorro de bateria lo tira. El
+ * acuse que manda el Service Worker al mostrar el aviso es lo unico que
+ * distingue las dos cosas, y sin esta linea la diferencia era invisible.
+ */
+function deviceDelivery(d) {
+  if (!d.enabled) return '';
+  if (d.delivery === 'ok') {
+    return `<span class="deliv ok">Recibiendo avisos · último confirmado ${
+      escapeHtml(agoText(d.lastAckAt))}</span>`;
+  }
+  if (d.delivery === 'pending') {
+    return '<span class="deliv">Aviso enviado, esperando confirmación…</span>';
+  }
+  if (d.delivery === 'silent') {
+    return `<span class="deliv silent">No confirma los avisos desde ${
+      escapeHtml(agoText(d.lastSendAt))}<button data-why="${escapeAttr(d.id)}"
+      type="button">¿Por qué?</button></span>`;
+  }
+  return '<span class="deliv">Sin avisos enviados todavía</span>';
+}
+
+/** "hace 3 min" / "hace 2 h" / "el 14 de mar". */
+function agoText(at) {
+  if (!at) return 'nunca';
+  const mins = Math.round((Date.now() - at) / 60_000);
+  if (mins < 2) return 'ahora mismo';
+  if (mins < 60) return `hace ${mins} min`;
+  if (mins < 60 * 24) return `hace ${Math.round(mins / 60)} h`;
+  return `el ${new Date(at).toLocaleDateString([], { day: 'numeric', month: 'short' })}`;
 }
 
 /** "Última conexión hace 3 h", o la fecha si ya hace días. */
@@ -3285,16 +3531,72 @@ $('btn-push-test').onclick = async () => {
   // dado de alta, el "no hay dispositivos suscritos" no decia por que.
   const r = await activateNotifications();
   if (!r.ok) return; // la ventana de diagnostico ya explica lo que pasa
+  await testPush(null);
+};
 
-  const res = await fetch('/api/push/test', { method: 'POST' });
+/**
+ * Aviso de prueba, y despues la unica pregunta que importa: ha llegado?
+ *
+ * Antes esto decia "enviado a 2 dispositivos" y ahi acababa, que es
+ * exactamente lo que no sirve cuando uno de los dos lleva semanas mudo: el
+ * envio siempre sale bien, porque el push service acepta el mensaje sin
+ * saber si el movil lo pintara. Ahora se espera al acuse del Service Worker y
+ * se dice cuales lo han confirmado y cuales no.
+ *
+ * @param {string|null} id  un dispositivo concreto, o null para todos
+ */
+async function testPush(id) {
+  const res = await fetch('/api/push/test', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(id ? { id } : {}),
+  });
   const j = await res.json().catch(() => ({}));
   if (!res.ok) { toast(j.error || 'No se pudo enviar', 'err'); return; }
-  toast(
-    j.sent ? `Aviso enviado a ${j.sent} dispositivo(s)` : 'No hay dispositivos suscritos',
-    j.sent ? 'ok' : 'err',
-  );
-  showAdminPanel();   // refresca el recuento de dispositivos
-};
+  if (!j.sent) { toast('No hay dispositivos suscritos', 'err'); return; }
+
+  toast(`Aviso enviado a ${j.sent} dispositivo(s), esperando confirmación…`, 'ok');
+  const sentAt = Date.now();
+  const confirmed = await waitForAcks(sentAt, id);
+  if (confirmed == null) return; // el panel se cerro mientras esperabamos
+
+  if (confirmed.pending.length === 0) {
+    toast(`Confirmado por ${confirmed.ok.length} dispositivo(s) ✓`, 'ok');
+  } else {
+    toast(
+      `Sin confirmar: ${confirmed.pending.map((d) => d.label).join(', ')}. `
+        + 'Toca "¿Por qué?" en la lista.',
+      'err',
+    );
+  }
+}
+
+/**
+ * Sondea la lista de dispositivos hasta que confirmen, o hasta rendirse.
+ *
+ * 12 s es de sobra: el acuse sale del Service Worker en cuanto pinta el aviso,
+ * y un movil que tarde mas de eso es justo el que se quiere detectar. Sondear
+ * y no esperar un empujon por WebSocket porque el acuse puede llegar con el
+ * panel cerrado y no merece un canal propio.
+ */
+async function waitForAcks(sentAt, only, timeoutMs = 12_000) {
+  const deadline = Date.now() + timeoutMs;
+  let devices = [];
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 1500));
+    if (!adminPanelOpen()) return null;
+    const res = await fetch('/api/admin/devices').catch(() => null);
+    if (!res?.ok) continue;
+    const j = await res.json().catch(() => ({}));
+    devices = (j.devices || []).filter((d) => (only ? d.id === only : d.enabled));
+    renderDevices(j.devices || []);
+    if (devices.length && devices.every((d) => (d.lastAckAt || 0) >= sentAt)) break;
+  }
+  return {
+    ok: devices.filter((d) => (d.lastAckAt || 0) >= sentAt),
+    pending: devices.filter((d) => (d.lastAckAt || 0) < sentAt),
+  };
+}
 
 $('btn-bambu-logout').onclick = async () => {
   if (!confirm('¿Cerrar la sesión de Bambu Lab? Habrá que volver a verificar con el código del email.')) return;
