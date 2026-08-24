@@ -400,21 +400,22 @@ async function refreshTask() {
 // si mismo /api/health y con eso cuenta como trafico entrante.
 //
 // Ademas de mientras imprime o enfria, se sostiene la vigilia dentro de una
-// FRANJA HORARIA (WAKE_WINDOW, por defecto 9-23 hora de Madrid). El motivo es
-// el unico agujero que el auto-ping no puede tapar por si solo: dormido no
-// corre nada, asi que si una impresion empieza con el servicio caido, nadie se
-// entera hasta que algo lo despierte desde fuera. Despierto durante la franja,
-// ese arranque se detecta al momento, y a partir de ahi la impresion se
-// sostiene sola aunque acabe a las 4 de la manana.
+// FRANJA HORARIA (WAKE_WINDOW, por defecto 0-24: siempre). El motivo es el
+// unico agujero que el auto-ping no puede tapar por si solo: dormido no corre
+// nada, asi que si una impresion empieza con el servicio caido, nadie se entera
+// hasta que algo lo despierte desde fuera. Despierto de forma permanente, ese
+// arranque se detecta al momento sea la hora que sea.
 //
 // Lo que NO puede hacer este proceso, y conviene tener claro: despertarse solo.
-// El primer estimulo del dia tiene que venir de fuera (un cron gratuito
-// apuntando a /api/wake; ver .github/workflows/keepalive.yml y el README).
-// A partir de ese primer ping, la franja se sostiene sin ayuda.
+// Tras un reinicio o un redespliegue el primer estimulo tiene que venir de
+// fuera (un cron gratuito apuntando a /api/wake; ver
+// .github/workflows/keepalive.yml y el README). A partir de ese primer ping la
+// vigilia se sostiene sin ayuda.
 //
-// La cuenta: 9-23 son 14 h/dia, ~420 h/mes de las 750 que regala Render, con
-// sitio de sobra para las impresiones nocturnas. Despierto 24/7 serian ~730 h,
-// que entra por los pelos y sin margen para un despiste.
+// La cuenta: 24 h/dia x 31 dias = 744 h de las 750 que regala Render al mes.
+// Cabe, pero el margen son 6 h y el cupo es POR CUENTA: con un segundo
+// servicio free, o con muchos redespliegues, hay que bajar la franja (9-23 son
+// ~434 h) o pasar al plan starter, que no duerme y no gasta cupo.
 //
 // El enfriamiento necesita su propia cadena de pings porque el aviso de "ya
 // puedes retirarla" lo dispara un temporizador nuestro: si el servicio se
@@ -431,9 +432,11 @@ const ACTIVE_STATES = new Set(['RUNNING', 'PREPARE', 'PAUSE']);
 
 // Franja en la que merece la pena estar despierto aunque no haya nada
 // imprimiendo, para pillar el ARRANQUE de un trabajo en el momento y no en el
-// siguiente despertar. Ver src/wake.js para el por que y para la cuenta de
-// horas. "off" la desactiva y deja el comportamiento anterior.
-const WAKE_WINDOW = parseWindow(process.env.WAKE_WINDOW ?? '9-23');
+// siguiente despertar. Por defecto 0-24: vigilia permanente, que es lo que
+// hace falta para que ninguna impresion empiece sin testigo. Ver src/wake.js
+// para la cuenta de horas. "9-23" la limita a la franja diurna y "off" la
+// desactiva del todo.
+const WAKE_WINDOW = parseWindow(process.env.WAKE_WINDOW ?? '0-24');
 const WAKE_TZ = process.env.WAKE_TZ || 'Europe/Madrid';
 
 function printJobActive() {
@@ -1041,10 +1044,16 @@ server.listen(PORT, () => {
         `y cada ${Math.round(COOL_KEEPALIVE_MS / 60000)} min mientras enfria`,
     );
     if (WAKE_WINDOW) {
+      // 0-24 es el caso normal: decirlo como "24/7" y no como "0:00-24:00"
+      // ahorra tener que traducirlo mentalmente al leer el log.
+      const franja =
+        WAKE_WINDOW.start === 0 && WAKE_WINDOW.end === 24
+          ? 'permanente (24/7)'
+          : `${WAKE_WINDOW.start}:00-${WAKE_WINDOW.end}:00 (${WAKE_TZ})`;
       console.log(
-        `[keepalive] franja de vigilancia ${WAKE_WINDOW.start}:00-${WAKE_WINDOW.end}:00 ` +
-          `(${WAKE_TZ}) · ~${estimateMonthlyHours(WAKE_WINDOW)} h/mes de las 750 del plan free · ` +
-          'necesita un cron externo que llame a /api/wake para el primer ping del día',
+        `[keepalive] vigilancia ${franja} · ${estimateMonthlyHours(WAKE_WINDOW)} h/mes ` +
+          'de las 750 del plan free (mes de 31 días) · necesita un cron externo ' +
+          'que llame a /api/wake para levantarlo tras cada reinicio',
       );
     } else {
       console.log('[keepalive] sin franja de vigilancia (WAKE_WINDOW desactivada)');

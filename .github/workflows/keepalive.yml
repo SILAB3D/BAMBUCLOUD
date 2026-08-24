@@ -7,15 +7,16 @@
 # del propio servidor. Un proceso dormido NO PUEDE despertarse a si mismo ni
 # enterarse de que ha empezado una impresion.
 #
-# Este workflow es ese primer estimulo. Una vez el servidor esta en pie, se
-# sostiene solo durante su franja de vigilancia (WAKE_WINDOW, por defecto 9-23)
-# y durante toda impresion, asi que aqui basta con llamar una vez por hora:
-# lo unico que se cubre es el arranque del dia y los reinicios/despliegues.
+# Este workflow es ese primer estimulo. Una vez el servidor esta en pie se
+# sostiene solo (WAKE_WINDOW=0-24, vigilia permanente), asi que aqui basta con
+# llamar una vez por hora: lo unico que se cubre es volver a levantarlo despues
+# de un reinicio, un redespliegue o un fallo de la cadena de auto-pings.
 #
 # COSTE
 # -----
 # 0. GitHub Actions es gratis (ilimitado en repos publicos, 2.000 min/mes en
-# privados) y cada ejecucion son unos segundos. 16 al dia ~ 490 min/mes.
+# privados) y cada ejecucion son unos segundos. 24 al dia ~ 740 min/mes, que
+# sigue entrando en los 2.000 de un repo privado.
 #
 # AVISO
 # -----
@@ -28,10 +29,10 @@ name: keepalive
 
 on:
   schedule:
-    # En UTC. De 07:00 a 22:00 UTC cubre 9:00-23:00 de Madrid tanto en horario
-    # de verano (UTC+2) como de invierno (UTC+1), sin tener que tocar nada en
-    # marzo ni en octubre.
-    - cron: '0 7-22 * * *'
+    # Cada hora, todo el dia: la vigilia es 24/7, asi que no hay franja que
+    # respetar y el despertador cubre las 24 h. En UTC, pero al ser cada hora
+    # da igual el cambio de horario de Madrid.
+    - cron: '0 * * * *'
   workflow_dispatch: # para probarlo a mano desde la pestaña Actions
 
 # Si una ejecucion se retrasa (GitHub no garantiza la puntualidad del cron) y

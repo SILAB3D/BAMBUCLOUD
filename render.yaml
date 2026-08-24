@@ -13,8 +13,9 @@
 # email), pero si el servicio se reinicia mientras nadie mira, los avisos al
 # movil no llegan hasta la siguiente visita.
 #
-# Para que todo persista de verdad: plan `starter` y descomentar el bloque
-# `disk` de abajo.
+# Mantener el servicio despierto 24/7 NO arregla esto: evita que se duerma,
+# pero no que Render lo reinicie o redespliegue. Para que todo persista de
+# verdad: plan `starter` y descomentar el bloque `disk` de abajo.
 # ---------------------------------------------------------------------------
 services:
   - type: web
@@ -34,11 +35,19 @@ services:
         value: production
       - key: BAMBU_REGION
         value: global
-      # Franja en la que el servicio se mantiene despierto aunque no haya nada
-      # imprimiendo, para detectar el arranque de un trabajo al momento.
-      # ~420 h/mes de las 750 del plan free. "off" la desactiva.
+      # Vigilia 24/7: el servicio se mantiene despierto siempre, no solo
+      # mientras imprime, para detectar el arranque de un trabajo al momento.
+      #
+      # La cuenta: 24 h x 31 dias = 744 h de las 750 que regala Render al mes.
+      # Cabe, pero con 6 h de margen y con dos condiciones que hay que
+      # respetar o el servicio se suspende hasta el mes siguiente:
+      #   1. Este tiene que ser el UNICO servicio free de la cuenta. El cupo de
+      #      750 h es por cuenta, no por servicio.
+      #   2. Los redespliegues tambien consumen horas del mismo bote.
+      # Si algun mes se aprieta, "9-23" vuelve a dejarlo en ~434 h. "off" la
+      # desactiva del todo.
       - key: WAKE_WINDOW
-        value: 9-23
+        value: 0-24
       - key: WAKE_TZ
         value: Europe/Madrid
       # sync:false = Render la pide al crear el servicio y no se guarda en git.

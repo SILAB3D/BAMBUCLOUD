@@ -101,7 +101,8 @@ node -e "console.log(require('./.bambu-token.json').token)"
 Límites del plan gratuito que conviene tener presentes:
 
 - **Se duerme tras 15 min sin visitas.** El primer acceso tarda ~1 min en despertar y,
-  mientras duerme, no hay conexión MQTT: no se envían notificaciones. Ver
+  mientras duerme, no hay conexión MQTT: no se envían notificaciones. La configuración
+  por defecto lo mantiene despierto **24/7** dentro del cupo gratuito; ver
   *[Mantener el servicio despierto](#mantener-el-servicio-despierto)* justo debajo.
 - **No hay disco persistente.** Por eso el token va en `BAMBU_TOKEN` en vez de en
   fichero. Si algún día Bambu lo rechaza, actualiza esa variable con uno nuevo.
@@ -128,30 +129,40 @@ ahí salen las dos reglas que mandan sobre todo lo demás:
 > Un proceso dormido **no puede despertarse a sí mismo** ni enterarse de que ha empezado
 > una impresión. El primer estímulo tiene que venir de fuera, siempre.
 
-La vigilia se sostiene en cuatro capas, de dentro afuera:
+La configuración por defecto es **vigilia permanente (24/7)**. La vigilia se sostiene en
+cuatro capas, de dentro afuera:
 
 | Capa | Quién la sostiene | Cuándo actúa |
 | --- | --- | --- |
 | **Impresión en curso** | el propio servidor, cada `KEEPALIVE_MS` (10 min) | mientras imprime, esté a la hora que esté |
 | **Enfriamiento** | el servidor, con un ping justo al acabar la cuenta atrás | los 15 min de enfriado, para que salga el «ya puedes retirarla» |
-| **Franja de vigilancia** | el servidor, mientras esté en pie | dentro de `WAKE_WINDOW` (9-23 por defecto), aunque no haya nada imprimiendo |
-| **Primer ping del día** | **un cron externo** llamando a `GET /api/wake` | una vez por hora, como red de seguridad |
+| **Vigilancia permanente** | el servidor, mientras esté en pie | siempre (`WAKE_WINDOW=0-24`), haya o no algo imprimiendo |
+| **Rearranque** | **un cron externo** llamando a `GET /api/wake` | cada hora, las 24 h: es lo único que puede volver a levantarlo tras un reinicio o un redespliegue |
 
-Lo que aporta la franja es lo único que faltaba: si una impresión **empieza** con el servicio
-dormido, nadie se entera hasta que algo lo despierte. Despierto durante la franja, ese arranque
-se detecta al momento y a partir de ahí la impresión se sostiene sola, aunque acabe a las 4 de
-la mañana.
+Lo que aporta la vigilancia permanente es el único agujero que el auto-ping no puede tapar
+solo: si una impresión **empieza** con el servicio dormido, nadie se entera hasta que algo lo
+despierte. Despierto siempre, ese arranque se detecta al momento sea la hora que sea.
 
-**El coste sigue siendo 0.** Render regala 750 h de instancia al mes; una franja de 9 a 23 son
-14 h/día, **~420 h/mes**, con sitio de sobra para las impresiones que se salgan de la franja y
-para los despliegues. Estar despierto 24/7 serían ~730 h: entra por los pelos y sin ningún
-margen, de ahí que la franja no sea 0-24. `GET /api/health` devuelve la cuenta estimada para
-poder mirarla en vez de suponerla.
+**El coste sigue siendo 0, pero el margen es fino.** Render regala 750 h de instancia al mes y
+estar despierto 24/7 son **744 h** en un mes de 31 días. Cabe, con 6 h de margen, y bajo dos
+condiciones:
+
+- el cupo de 750 h es **por cuenta**, no por servicio: un segundo servicio free comiendo del
+  mismo bote se lleva el margen por delante;
+- los **redespliegues** también consumen horas.
+
+Si algún mes se aprieta, `WAKE_WINDOW=9-23` lo deja en ~434 h y las impresiones que caigan
+fuera de la franja se sostienen solas igual. `GET /api/health` devuelve la cuenta estimada (mes
+de 31 días, el peor caso) para poder mirarla en vez de suponerla.
 
 ```bash
-WAKE_WINDOW=9-23           # "23-7" también vale (cruza la medianoche); "off" lo desactiva
-WAKE_TZ=Europe/Madrid      # el contenedor de Render va en UTC: sin esto la franja se desplaza
+WAKE_WINDOW=0-24           # 24/7. "9-23" limita a la franja diurna, "23-7" cruza la medianoche, "off" lo desactiva
+WAKE_TZ=Europe/Madrid      # el contenedor de Render va en UTC: sin esto una franja parcial se desplaza
 ```
+
+Ojo con lo que **no** arregla la vigilia 24/7: el plan free sigue sin disco, así que un
+reinicio o un redespliegue de Render se lleva historial, ajustes y suscripciones push igual que
+antes. Para eso hace falta el plan `starter` con disco.
 
 #### El despertador externo
 
@@ -164,9 +175,10 @@ variable del repositorio en *Settings → Secrets and variables → Actions → 
 DASHBOARD_URL = https://tu-dominio.com
 ```
 
-Corre cada hora entre las 07:00 y las 22:00 UTC, que cubre 9:00-23:00 de Madrid en verano y en
-invierno sin tocar nada. Gratis (ilimitado en repos públicos, 2.000 min/mes en privados) y cada
-ejecución son segundos.
+Corre **cada hora, las 24 h** (`cron: '0 * * * *'`). Al ser horario no le afecta el cambio de
+hora de Madrid. Gratis (ilimitado en repos públicos, 2.000 min/mes en privados) y cada
+ejecución son segundos: 24 al día son ~740 min/mes, que siguen entrando en los 2.000 de un repo
+privado.
 
 > **Aviso**: GitHub desactiva los workflows programados de un repo sin actividad durante 60
 > días (avisa por correo antes). Si esto va a quedarse solo, mejor la opción de abajo.
