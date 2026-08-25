@@ -245,14 +245,11 @@ export class Notifier extends EventEmitter {
     this.prev = next;
     if (!next) return;
 
-    const job = next.jobName || 'trabajo sin nombre';
-
     // --- Transiciones de estado ---
     if (prev && prev.state !== next.state) {
       if (next.state === 'FINISH') {
-        this.fire('finished', `✅ Impresión terminada: ${job}`, {
+        this.fire('finished', '✅ Impresión terminada', {
           printerName,
-          job,
           level: 'success',
         });
         this.lastProgressBucket = -1;
@@ -261,9 +258,8 @@ export class Notifier extends EventEmitter {
         // un codigo del mismo catalogo oficial que los HMS. Sin traducirlo, el
         // aviso se queda en "ha fallado" y hay que ir a mirar a la maquina.
         const error = lookupPrintError(next.printError);
-        this.fire('failed', `❌ Impresión fallida: ${job}`, {
+        this.fire('failed', '❌ Impresión fallida', {
           printerName,
-          job,
           level: 'error',
           ...(error && {
             code: error.code,
@@ -275,21 +271,18 @@ export class Notifier extends EventEmitter {
         this.lastProgressBucket = -1;
       } else if (next.state === 'PAUSE') {
         const reason = next.stage ? ` (${next.stage})` : '';
-        this.fire('paused', `⏸️ Impresión en pausa${reason}: ${job}`, {
+        this.fire('paused', `⏸️ Impresión en pausa${reason}`, {
           printerName,
-          job,
           level: 'warning',
         });
       } else if (next.state === 'RUNNING' && prev.state === 'PAUSE') {
-        this.fire('resumed', `▶️ Impresión reanudada: ${job}`, {
+        this.fire('resumed', '▶️ Impresión reanudada', {
           printerName,
-          job,
           level: 'info',
         });
       } else if (next.state === 'RUNNING' && prev.state !== 'RUNNING') {
-        this.fire('started', `🖨️ Impresión iniciada: ${job}`, {
+        this.fire('started', '🖨️ Impresión iniciada', {
           printerName,
-          job,
           level: 'info',
         });
         this.lastProgressBucket = -1;
@@ -302,7 +295,6 @@ export class Notifier extends EventEmitter {
       if (needsUser.includes(next.stageCode)) {
         this.fire('attention', `⚠️ La impresora necesita atención: ${next.stage}`, {
           printerName,
-          job,
           level: 'warning',
         });
       }
@@ -321,7 +313,6 @@ export class Notifier extends EventEmitter {
       const headline = info.known ? info.description : `Error ${info.id} (${info.severityLabel})`;
       this.fire('hms', `🔧 ${headline}`, {
         printerName,
-        job,
         level: info.severity <= 2 ? 'error' : 'warning',
         code: info.id,
         severity: info.severity,
@@ -345,8 +336,8 @@ export class Notifier extends EventEmitter {
         this.lastProgressBucket = bucket;
         this.fire(
           'progress',
-          `📊 ${next.percent}% — ${job}${next.remainingText ? ` · quedan ${next.remainingText}` : ''}`,
-          { printerName, job, level: 'info', silent: true },
+          `📊 ${next.percent}%${next.remainingText ? ` · quedan ${next.remainingText}` : ''}`,
+          { printerName, level: 'info', silent: true },
         );
       }
     }

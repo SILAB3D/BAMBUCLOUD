@@ -284,16 +284,24 @@ llega
 > 👉 Carga una bobina nueva en esa ranura y reanuda desde la impresora.
 > https://bambulab.com/es-es/support/hms/0700_2000_0002_0001
 
-El texto descriptivo es **el oficial de Bambu Lab**, en español: sale de
-`https://e.bambulab.com/query.php`, la misma fuente que alimenta el buscador de errores de la
-web de soporte y la app Handy. El catálogo completo —**2.015 códigos HMS y 490 de error de
-impresión**— vive versionado en `data/bambu-errors.json`, así que el servidor arranca con él
-sin depender de la red, que es justo lo que no conviene cuando hay un error que traducir.
+El texto descriptivo es **el oficial de Bambu Lab**, en español, y sale de dos sitios:
 
-Para actualizarlo cuando Bambu añada códigos:
+- `https://e.bambulab.com/query.php`, la misma fuente que alimenta el buscador de errores de
+  la web de soporte y la app Handy: **2.015 códigos HMS y 490 de error de impresión**, en
+  `data/bambu-errors.json`.
+- `https://wiki.bambulab.com/es/hms/error-code`, la tabla de códigos que la impresora enseña
+  en su pantalla: **259 códigos de error de impresión** —81 de ellos no están en el catálogo
+  anterior—, en `data/bambu-wiki-errors.json`. Su redacción suele incluir ya el «qué hacer»,
+  así que **manda sobre el otro** cuando los dos conocen el mismo código.
+
+Entre ambos, **571 códigos de error de impresión**. Los dos ficheros van versionados, así que
+el servidor arranca con ellos sin depender de la red, que es justo lo que no conviene cuando
+hay un error que traducir.
+
+Para actualizarlos cuando Bambu añada códigos:
 
 ```bash
-npm run errors     # reescribe data/bambu-errors.json; revisa el diff y confirma
+npm run errors     # reescribe los dos JSON; revisa el diff y confirma
 ```
 
 La línea de **«qué hacer»** no viene de Bambu: el catálogo oficial publica la causa, no la
@@ -579,7 +587,9 @@ public/manifest.webmanifest   manifiesto de la PWA
 agent/camera-agent.js    agente de cámara para la LAN
 tools/make-icons.mjs     genera favicon e iconos (figura de la marca)
 tools/fetch-error-codes.mjs   descarga el catálogo oficial de errores de Bambu Lab
+tools/fetch-wiki-error-codes.mjs   descarga la tabla de errores de la wiki de Bambu Lab
 data/bambu-errors.json   ese catálogo, versionado: 2.015 códigos HMS + 490 de impresión
+data/bambu-wiki-errors.json   la tabla de la wiki: 259 códigos de error de impresión
 .github/workflows/keepalive.yml   cron gratuito que da el primer ping del día
 ```
 

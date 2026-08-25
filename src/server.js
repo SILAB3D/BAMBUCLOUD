@@ -265,20 +265,17 @@ jobCycle.on('phase', (info) => {
   armCoolingKeepAlive();
   if (info.silent) return;
 
-  const job = info.jobName || 'la impresión';
   const printerName = app_state.printer?.name || 'Bambu Lab A1';
   const mins = Math.round(jobCycle.coolMs / 60_000);
 
   if (info.phase === 'cooling') {
-    notifier.fire('cooling', `🌡️ Enfriando la cama · ${job}. Lista en ${mins} min.`, {
+    notifier.fire('cooling', `🌡️ Enfriando la cama. Lista en ${mins} min.`, {
       printerName,
-      job,
       level: 'info',
     });
   } else if (info.phase === 'ready') {
-    notifier.fire('ready', `📦 Ya puedes retirar la impresión: ${job}`, {
+    notifier.fire('ready', '📦 Ya puedes retirar la impresión', {
       printerName,
-      job,
       level: 'success',
     });
   }
@@ -1036,7 +1033,8 @@ server.listen(PORT, () => {
   if (push.enabled) console.log(`[push] activo, ${push.count} dispositivo(s) suscrito(s)`);
   console.log(
     `[errores] catálogo oficial v${ERROR_DB_INFO.version} (${ERROR_DB_INFO.lang}): ` +
-      `${ERROR_DB_INFO.hmsCount} códigos HMS, ${ERROR_DB_INFO.printCount} de impresión`,
+      `${ERROR_DB_INFO.hmsCount} códigos HMS, ${ERROR_DB_INFO.printCount} de impresión` +
+      (ERROR_DB_INFO.wikiCount ? ` (${ERROR_DB_INFO.wikiCount} desde la wiki)` : ''),
   );
   if (KEEPALIVE_URL) {
     console.log(

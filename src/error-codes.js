@@ -18,6 +18,14 @@
  *   remedy       una linea de "que hacer", deducida de ese texto
  *   url          la ficha oficial del codigo, por si hace falta el detalle
  *
+ * Segunda fuente, solo para los errores de impresion
+ * ---------------------------------------------------
+ * `data/bambu-wiki-errors.json` lo genera `tools/fetch-wiki-error-codes.mjs`
+ * desde https://wiki.bambulab.com/es/hms/error-code, la tabla de codigos que
+ * la impresora enseña en su pantalla. Cubre decenas de codigos que el catalogo
+ * de e.bambulab.com no trae, y su redaccion suele incluir ya el "que hacer",
+ * asi que manda sobre el otro cuando los dos conocen el mismo codigo.
+ *
  * Sobre `remedy`: Bambu no publica la solucion dentro de este catalogo, solo
  * la causa. La linea de accion se deduce aqui con reglas sobre el texto
  * oficial (filamento agotado -> "carga una bobina", conector con mal contacto
@@ -33,6 +41,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const DB_FILE =
   process.env.ERROR_CODES_FILE || path.join(__dirname, '..', 'data', 'bambu-errors.json');
+
+const WIKI_FILE =
+  process.env.WIKI_ERROR_CODES_FILE ||
+  path.join(__dirname, '..', 'data', 'bambu-wiki-errors.json');
 
 /** Idioma de las fichas de soporte enlazadas. */
 const SUPPORT_LOCALE = process.env.BAMBU_SUPPORT_LOCALE || 'es-es';
@@ -199,13 +211,32 @@ function loadDb() {
   }
 }
 
+/**
+ * La tabla de la wiki es un extra: si el fichero no esta, se sigue
+ * respondiendo con el catalogo de e.bambulab.com como hasta ahora.
+ */
+function loadWiki() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(WIKI_FILE, 'utf8'));
+    return { print: raw.print || {}, lang: raw.lang || 'es', fetchedAt: raw.fetchedAt || null };
+  } catch {
+    return { print: {}, lang: null, fetchedAt: null };
+  }
+}
+
 const db = loadDb();
+const wiki = loadWiki();
+
+/** Los dos catalogos de errores de impresion, con la wiki mandando. */
+const printDb = { ...db.print, ...wiki.print };
 
 export const ERROR_DB_INFO = {
   version: db.version,
   lang: db.lang,
   hmsCount: Object.keys(db.hms).length,
-  printCount: Object.keys(db.print).length,
+  printCount: Object.keys(printDb).length,
+  wikiCount: Object.keys(wiki.print).length,
+  wikiFetchedAt: wiki.fetchedAt,
 };
 
 // ---------------------------------------------------------------------------
@@ -266,12 +297,13 @@ export function lookupPrintError(code) {
   const n = Number(code);
   if (!Number.isFinite(n) || n === 0) return null;
   const key = (n >>> 0).toString(16).toUpperCase().padStart(8, '0');
-  const description = db.print[key] || null;
+  const description = printDb[key] || null;
   return {
     code: key,
     description,
     remedy: remedyFor(description, 'serious'),
     known: Boolean(description),
+    source: wiki.print[key] ? 'wiki' : description ? 'catalogo' : null,
     url: `${SUPPORT_BASE}/print-error/${key}`,
   };
 }
