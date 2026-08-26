@@ -23,10 +23,22 @@ export class Store {
     this.file = file;
     this.data = { ...defaults };
     this._timer = null;
+    /**
+     * Si habia algo que leer al arrancar.
+     *
+     * En false significa arranque en frio: ajustes de fabrica, cero
+     * dispositivos push y sin historial. Es la explicacion de casi todo
+     * "esto se ha desactivado solo", asi que conviene que se pueda mirar
+     * en vez de deducirse.
+     */
+    this.loaded = false;
 
     try {
       const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
-      if (raw && typeof raw === 'object') this.data = { ...defaults, ...raw };
+      if (raw && typeof raw === 'object') {
+        this.data = { ...defaults, ...raw };
+        this.loaded = true;
+      }
     } catch {
       // No existe o esta corrupto: arrancamos con los valores por defecto.
     }

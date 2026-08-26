@@ -137,7 +137,7 @@ cuatro capas, de dentro afuera:
 | **Impresión en curso** | el propio servidor, cada `KEEPALIVE_MS` (10 min) | mientras imprime, esté a la hora que esté |
 | **Enfriamiento** | el servidor, con un ping justo al acabar la cuenta atrás | los 15 min de enfriado, para que salga el «ya puedes retirarla» |
 | **Vigilancia permanente** | el servidor, mientras esté en pie | siempre (`WAKE_WINDOW=0-24`), haya o no algo imprimiendo |
-| **Rearranque** | **un cron externo** llamando a `GET /api/wake` | cada hora, las 24 h: es lo único que puede volver a levantarlo tras un reinicio o un redespliegue |
+| **Rearranque** | **un cron externo** llamando a `GET /api/wake` | cada 30 min, las 24 h: es lo único que puede volver a levantarlo tras un reinicio o un redespliegue |
 
 Lo que aporta la vigilancia permanente es el único agujero que el auto-ping no puede tapar
 solo: si una impresión **empieza** con el servicio dormido, nadie se entera hasta que algo lo
@@ -164,6 +164,34 @@ Ojo con lo que **no** arregla la vigilia 24/7: el plan free sigue sin disco, as�
 reinicio o un redespliegue de Render se lleva historial, ajustes y suscripciones push igual que
 antes. Para eso hace falta el plan `starter` con disco.
 
+**Esa es, casi siempre, la explicación de «las notificaciones se han desactivado solas».** No
+se desactivan: el proceso arranca de cero y vuelve a `DEFAULT_SETTINGS`. Para poder
+distinguirlo de una avería sin adivinar, hay dos señales:
+
+- en el log, al arrancar: `[store] … no existía: arranque en frío con los ajustes de
+  fábrica`;
+- en `GET /api/health`, el campo `storage.loadedAtBoot` — `false` significa
+  que este arranque empezó sin estado previo;
+- y, sin abrir nada, **el cronómetro del pie del dashboard**.
+
+#### El cronómetro del pie
+
+Abajo del todo, en una línea discreta: *«Despierta desde hace 3 h 12 min»*.
+
+Cuenta lo que lleva en pie **el proceso del servidor**, no lo que lleva abierta la pestaña. Esa
+distinción es todo el motivo de que exista: **si el contador vuelve a cero, Render ha
+reiniciado el servicio**, y con él se han ido historial, suscripciones push y ajustes. Es la
+forma de saber de un vistazo que «esto se ha desactivado solo» fue en realidad un arranque en
+frío, sin ir a mirar logs.
+
+El número llega en el snapshot como `uptimeSec` —segundos, no una marca de tiempo— y el
+navegador lo traduce con su propio reloj, así que no hereda el desfase entre los dos. Con la
+conexión caída **deja de contar** y se pone en ámbar: el servidor puede estar dormido, y un
+número subiendo mientras el otro lado está apagado sería mentira.
+
+Y el arranque en frío deja ahora las **notificaciones básicas encendidas**, así que un
+reinicio ya no deja el dashboard mudo aunque nadie mire el panel.
+
 #### El despertador externo
 
 Dos opciones, las dos gratis. Con una basta; tener las dos tampoco molesta.
@@ -175,17 +203,36 @@ variable del repositorio en *Settings → Secrets and variables → Actions → 
 DASHBOARD_URL = https://tu-dominio.com
 ```
 
-Corre **cada hora, las 24 h** (`cron: '0 * * * *'`). Al ser horario no le afecta el cambio de
-hora de Madrid. Gratis (ilimitado en repos públicos, 2.000 min/mes en privados) y cada
-ejecución son segundos: 24 al día son ~740 min/mes, que siguen entrando en los 2.000 de un repo
-privado.
+Corre **cada 30 min, las 24 h** (`cron: '0,30 * * * *'`). No depende de una hora concreta,
+así que el cambio de hora de Madrid le da igual.
 
-> **Aviso**: GitHub desactiva los workflows programados de un repo sin actividad durante 60
-> días (avisa por correo antes). Si esto va a quedarse solo, mejor la opción de abajo.
+El número que importa aquí no es cada cuánto despierta, sino **cuánto puede estar caído el
+servicio sin que nadie se entere**: con el cron horario, un reinicio a las 4:05 dejaba el
+dashboard dormido hasta las 5:00, y en esa hora una impresión podía empezar y terminar sin un
+solo aviso. Cada 30 min parte ese peor caso por la mitad.
 
-**cron-job.org** — gratis, sin límite de ejecuciones y sin la regla de los 60 días. Crea un job
-que llame a `https://tu-dominio.com/api/wake` cada hora, con el tiempo de espera al máximo (un
-servicio dormido tarda ~30-50 s en arrancar).
+No se baja más por el presupuesto de **minutos de Actions**, no por las horas de Render
+(dormido no consume instancia). GitHub redondea al minuto cada ejecución aunque dure ocho
+segundos, y el cupo de 2.000 min/mes aplica solo a repos privados:
+
+| Frecuencia | Ejecuciones/día | Minutos/mes | ¿Entra en repo privado? |
+| --- | --- | --- | --- |
+| Cada hora | 24 | ~740 | Sí |
+| **Cada 30 min** | **48** | **~1.500** | **Sí** |
+| Cada 15 min | 96 | ~2.900 | No |
+
+En repos públicos los minutos son ilimitados y se puede bajar sin miedo.
+
+> **Dos avisos**. GitHub **no garantiza la puntualidad** del cron: en horas punta las
+> ejecuciones programadas se retrasan y a veces se saltan, así que «cada 30 min» es una
+> intención, no una garantía. Y GitHub **desactiva los workflows programados** de un repo sin
+> actividad durante 60 días (avisa por correo antes) — un dashboard que lleva meses
+> funcionando es exactamente un repo sin actividad. Si algo de esto importa, la opción de
+> abajo es la buena.
+
+**cron-job.org** — gratis, sin límite de ejecuciones, puntual y sin la regla de los 60 días.
+Crea un job que llame a `https://tu-dominio.com/api/wake` cada 5 min (o cada minuto), con el
+tiempo de espera al máximo: un servicio dormido tarda ~30-50 s en arrancar.
 
 `/api/wake` no lleva autenticación a propósito: no expone nada que no exponga ya `/api/health`
 y tiene que poder llamarla un cron gratuito sin secretos que rotar. Devuelve `wasAwake: false`
@@ -272,6 +319,40 @@ hace una vez por móvil.
 > **En iPhone/iPad**, Safari solo permite push si la web está **añadida a la pantalla de
 > inicio**. Desde una pestaña normal el botón no hará nada. En Android funciona en ambos casos.
 
+### La campana: «estoy» / «no estoy»
+
+Una vez concedido el permiso, la campana deja de pedir nada y pasa a ser otra cosa: el
+interruptor de **disponibilidad**.
+
+| Campana | Significa | Qué pasa |
+| --- | --- | --- |
+| Verde | **Estoy disponible** | Llegan los avisos que estén activos en los ajustes |
+| Ámbar y tachada | **No estoy disponible** | No suena nada en ningún dispositivo |
+
+Es deliberadamente distinto de los interruptores del panel de administración, y la diferencia
+está en la pregunta que contesta cada uno. El panel contesta a *«de qué quiero enterarme»*: se
+toca una vez, es configuración, y por eso pide el código. La campana contesta a *«voy a estar
+delante para hacer algo con el aviso»*, que cambia varias veces al día — y por eso está a un
+toque en la pantalla principal, sin código.
+
+**Y por eso vuelve sola.** Cada día **a las 9:00** (hora de `WAKE_TZ`) el servidor se pone en
+«estoy disponible» pase lo que pase. Silenciar la noche apagando categorías del panel obliga a
+acordarse de volver a encenderlas, y el día que uno no se acuerda la impresión termina sin que
+nadie se entere; aquí el olvido no se paga.
+
+Detalles que importan:
+
+- Es **global, no por dispositivo**. Para silenciar un móvil concreto y dejar el resto sonando
+  está el interruptor por dispositivo del panel.
+- **Lo que pasa mientras estás fuera sigue entrando en el panel de actividad.** Se corta el
+  aviso, no el registro: al volver está todo.
+- El reset **no es un temporizador**, es una deducción. Se guarda el último día en que ya se
+  aplicó y cada consulta comprueba si hoy toca, así que un proceso que estaba dormido a las
+  9:00 y arranca a las 11:00 aplica el reset en el primer vistazo. En el plan gratuito de
+  Render, donde el proceso se duerme y se reinicia solo, un `setTimeout` a las 9:00 no habría
+  sobrevivido a nada. Ver `src/availability.js`.
+- El **aviso de prueba** del panel ignora la disponibilidad: si es una prueba, tiene que sonar.
+
 ### Códigos de error traducidos
 
 Los avisos de error no dan el código, dan **lo que pasa y lo que hay que hacer**. En vez de
@@ -324,8 +405,9 @@ El desbloqueo dura una hora: la sesión del dashboard no caduca, pero el panel s
     y los errores de la impresora (HMS).
   - **Otras notificaciones** — iniciada, terminada, en pausa, reanudada, fallida, atención
     requerida e hitos de progreso.
-- **Un interruptor por tipo de aviso**, dentro de su categoría. Son tres llaves en serie: el
-  maestro, el de la categoría y el del aviso; con que una esté cerrada, no sale nada. Apagar
+- **Un interruptor por tipo de aviso**, dentro de su categoría. Con la disponibilidad de la
+  campana son cuatro llaves en serie: estar disponible, el maestro, el de la categoría y el
+  del aviso; con que una esté cerrada, no sale nada. Apagar
   una categoría **no borra** lo que tenía cada aviso, así que volver a encenderla lo devuelve
   tal cual estaba.
 
@@ -333,12 +415,21 @@ El desbloqueo dura una hora: la sesión del dashboard no caduca, pero el panel s
   genera desde ahí: añadir un tipo allí, con su `category`, basta para que aparezca su
   interruptor en el sitio correcto.
 
-  **De serie las dos categorías vienen apagadas** (`DEFAULT_SETTINGS` en `src/notifier.js`):
-  en el plan gratuito de Render no hay disco, así que cada reinicio devuelve los ajustes a
-  estos valores y el punto de partida es el silencio. Los interruptores individuales, en
-  cambio, arrancan encendidos, para que encender una categoría encienda de verdad lo que
-  promete. Una vez tocas cualquier interruptor, tu elección manda mientras el estado
-  sobreviva; con un disco persistente montado, para siempre.
+  **De serie vienen las básicas encendidas y las otras apagadas** (`DEFAULT_SETTINGS` en
+  `src/notifier.js`). Esto no decide solo el primer arranque: en el plan gratuito de Render no
+  hay disco, así que **cada reinicio devuelve los ajustes a estos valores**, y son la única
+  configuración que se puede dar por segura.
+
+  Antes las dos categorías arrancaban apagadas, buscando que un reinicio no reactivara solo
+  unos avisos recién silenciados. El efecto real fue el contrario y peor: un redespliegue de
+  madrugada dejaba el dashboard mudo sin que nada lo indicara, y la primera señal era una
+  impresión terminada de la que nadie se enteró. Silenciar es reversible mirando el panel; no
+  enterarse, no. Para el «ahora no quiero que suene» está la campana, que se deshace sola a
+  las 9:00.
+
+  Los interruptores individuales arrancan todos encendidos, para que encender una categoría
+  encienda de verdad lo que promete. Una vez tocas cualquier interruptor, tu elección manda
+  mientras el estado sobreviva; con un disco persistente montado, para siempre.
 - **Enviar aviso de prueba**: suscribe este dispositivo si hacía falta y manda un push real.
   Si algo falla, se abre la ventana de diagnóstico con las causas probables.
 - **Cerrar sesión** de Bambu Lab: corta el MQTT y borra el token guardado. Para reconectar
@@ -575,6 +666,7 @@ src/notifier.js          catálogo de avisos por categoría + transiciones + his
 src/error-codes.js       códigos HMS y print_error → descripción oficial + qué hacer
 src/progress.js          la décima del porcentaje, interpolada del tiempo restante
 src/wake.js              franja horaria de vigilia (y la cuenta de horas que implica)
+src/availability.js      "estoy" / "no estoy" de la campana, con vuelta automática a las 9:00
 src/push.js              Web Push (VAPID): alta, baja, acuse de recibo y purga de suscripciones
 src/store.js             persistencia JSON de historial, ajustes, suscripciones y fase
 src/session-store.js     almacén de sesiones de express-session sobre el JSON
@@ -623,6 +715,8 @@ los colores, regenera y súbelo: los PNG están versionados.
 | POST | `/api/cycle/collected` | «Ya la he retirado»: cierra el ciclo |
 | GET | `/api/settings` | Ajustes de avisos, canales activos y estado de push |
 | PUT | `/api/settings` | Cambiar ajustes (requiere admin) |
+| GET | `/api/availability` | Disponibilidad actual y hora de vuelta |
+| POST | `/api/availability` | «Estoy» / «no estoy» (`{ available }`, sin admin) |
 | POST | `/api/admin/unlock` | Desbloquear con el código (`{ code }`) |
 | POST | `/api/admin/bambu-logout` | Cerrar sesión de Bambu Cloud (requiere admin) |
 | POST | `/api/admin/bambu-login` | Rehacer el login sin reiniciar (requiere admin) |

@@ -8,31 +8,47 @@
 # enterarse de que ha empezado una impresion.
 #
 # Este workflow es ese primer estimulo. Una vez el servidor esta en pie se
-# sostiene solo (WAKE_WINDOW=0-24, vigilia permanente), asi que aqui basta con
-# llamar una vez por hora: lo unico que se cubre es volver a levantarlo despues
-# de un reinicio, un redespliegue o un fallo de la cadena de auto-pings.
+# sostiene solo (WAKE_WINDOW=0-24, vigilia permanente), asi que lo unico que se
+# cubre aqui es volver a levantarlo despues de un reinicio, un redespliegue o un
+# fallo de la cadena de auto-pings.
 #
-# COSTE
-# -----
-# 0. GitHub Actions es gratis (ilimitado en repos publicos, 2.000 min/mes en
-# privados) y cada ejecucion son unos segundos. 24 al dia ~ 740 min/mes, que
-# sigue entrando en los 2.000 de un repo privado.
+# POR QUE CADA 30 MINUTOS Y NO CADA HORA
+# --------------------------------------
+# Porque el numero que importa no es cada cuanto se despierta, sino cuanto
+# tiempo puede pasar el servicio caido sin que nadie se entere: con el cron
+# horario, un reinicio a las 4:05 dejaba el dashboard dormido hasta las 5:00, y
+# durante esa hora una impresion podia empezar y terminar sin un solo aviso.
+# Cada 30 min parte ese peor caso por la mitad.
 #
-# AVISO
-# -----
-# GitHub desactiva los workflows programados de un repo sin actividad durante
-# 60 dias, y avisa por correo antes de hacerlo. Si esto va a quedarse solo,
-# mejor un cron externo de verdad (cron-job.org, gratis y sin esa regla); el
-# README lo explica. Tener los dos a la vez tampoco molesta.
+# No se baja mas por el presupuesto de minutos, no por el de horas de Render
+# (dormido no consume instancia, y despierto ya se paga igual):
+#
+#   cada 30 min = 48 ejecuciones/dia = ~1.500 min/mes  -> entra en los 2.000
+#   cada 15 min = 96 ejecuciones/dia = ~2.900 min/mes  -> se pasa
+#
+# GitHub factura cada ejecucion redondeando al minuto, aunque dure ocho
+# segundos, y el cupo de 2.000 min/mes solo aplica a repos privados (en publicos
+# es ilimitado y se puede bajar sin miedo).
+#
+# AVISOS
+# ------
+# 1. GitHub NO garantiza la puntualidad del cron: en horas punta las
+#    ejecuciones programadas se retrasan, y a veces se saltan. Si lo que se
+#    quiere es despertar de verdad cada pocos minutos, esto no es la
+#    herramienta: un cron externo (cron-job.org, gratis, cada minuto y puntual)
+#    apuntando a /api/wake si. Tener los dos a la vez es lo mas sensato.
+# 2. GitHub desactiva los workflows programados de un repo sin actividad
+#    durante 60 dias, y avisa por correo antes de hacerlo. Un dashboard que
+#    lleva meses funcionando es exactamente un repo sin actividad.
 
 name: keepalive
 
 on:
   schedule:
-    # Cada hora, todo el dia: la vigilia es 24/7, asi que no hay franja que
-    # respetar y el despertador cubre las 24 h. En UTC, pero al ser cada hora
-    # da igual el cambio de horario de Madrid.
-    - cron: '0 * * * *'
+    # Cada media hora, todo el dia: la vigilia es 24/7, asi que no hay franja
+    # que respetar. En UTC, pero al no depender de una hora concreta da igual
+    # el cambio de horario de Madrid.
+    - cron: '0,30 * * * *'
   workflow_dispatch: # para probarlo a mano desde la pestaña Actions
 
 # Si una ejecucion se retrasa (GitHub no garantiza la puntualidad del cron) y

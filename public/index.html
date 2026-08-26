@@ -228,6 +228,18 @@ button.primary:active{transform:scale(.98)}
 .icon-btn.active svg{stroke:var(--accent)}
 .icon-btn.spin svg{animation:spin .7s linear}
 
+/* Campana. Hace dos trabajos segun el permiso del navegador: si no esta
+   concedido, lo pide; si ya lo esta, es el interruptor de "estoy disponible" /
+   "no estoy disponible".
+   Tachada y ambar para el segundo estado, no roja: no es una averia, pero
+   tampoco es un sitio en el que uno quiera quedarse sin darse cuenta. El
+   selector lleva el id para ganarle a .icon-btn.active, que pinta de verde. */
+#btn-notify .bell-off{display:none}
+#btn-notify.muted .bell-on{display:none}
+#btn-notify.muted .bell-off{display:block}
+#btn-notify.muted{border-color:rgba(245,165,36,.42);background:rgba(245,165,36,.1)}
+#btn-notify.muted svg{stroke:var(--warn)}
+
 /* Sincronizacion: relleno solido verde si la web va al dia, rojo si no.
    Es el unico boton que informa ademas de accionar, asi que se pinta entero. */
 #btn-sync{transition:background .45s var(--ease),border-color .45s,box-shadow .45s}
@@ -808,6 +820,26 @@ button.primary:active{transform:scale(.98)}
 .toast.err{border-color:rgba(255,92,92,.4);color:#ffb4b4}
 .toast.ok{border-color:rgba(0,212,146,.4);color:#8ff0d2}
 
+/* Pie con el cronometro de vigilia.
+   Discreto a proposito: no es un dato que haya que mirar, es uno que tiene que
+   estar ahi el dia que algo no cuadra. El punto repite el estado de la
+   conexion; el numero, cuanto lleva vivo ESTE proceso. */
+.uptime{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  padding:4px 0 2px;font-size:12px;color:var(--dim);
+  font-variant-numeric:tabular-nums;letter-spacing:.01em;
+}
+.uptime .dot{
+  width:6px;height:6px;border-radius:50%;flex:none;
+  background:var(--accent);box-shadow:0 0 0 3px rgba(0,212,146,.15);
+  transition:background .3s,box-shadow .3s;
+}
+.uptime.off{color:var(--warn)}
+.uptime.off .dot{background:var(--warn);box-shadow:0 0 0 3px rgba(245,165,36,.15)}
+/* Recien arrancado: el numero pequeno es justo la informacion importante
+   (acaba de reiniciarse), asi que se le quita el gris de encima. */
+.uptime.fresh{color:var(--text)}
+
 /* ==========================================================================
    Movil
    ========================================================================== */
@@ -977,9 +1009,14 @@ button.primary:active{transform:scale(.98)}
       </div>
 
       <div class="tools">
+        <!-- Los dos iconos viven en el marcado y el estado decide cual se ve:
+             reconstruir el SVG en cada repintado se comia la transicion. -->
         <button id="btn-notify" class="icon-btn" title="Activar avisos" aria-label="Activar avisos">
-          <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <svg class="bell-on" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
             <path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+          <svg class="bell-off" viewBox="0 0 24 24"><path d="M13.7 21a2 2 0 0 1-3.4 0"/>
+            <path d="M18.6 13A17 17 0 0 1 18 8"/><path d="M6.3 6.3A6 6 0 0 0 6 8c0 7-3 9-3 9h14"/>
+            <path d="M18 8a6 6 0 0 0-9.3-5"/><path d="M2 2l20 20"/></svg>
         </button>
         <button id="btn-sync" class="icon-btn" title="Sincronizar" aria-label="Sincronizar">
           <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>
@@ -1104,6 +1141,11 @@ button.primary:active{transform:scale(.98)}
         </div>
       </section>
     </div>
+
+    <!-- ====== Pie: cuanto lleva el servidor en pie ====== -->
+    <footer class="uptime" id="uptime" title="Tiempo que lleva en pie este proceso del servidor">
+      <span class="dot"></span><span id="uptime-text">Conectando…</span>
+    </footer>
 
   </main>
 </div>
@@ -1319,12 +1361,19 @@ let lastState = null;      // ultimo estado normalizado
 let lastCycle = null;      // fase del ciclo (impresion / enfriamiento / retirada)
 let pushConfig = { supported: false, publicKey: null, devices: 0 };
 let settings = null;
+// Disponibilidad del usuario: { available, since, resetHour, tz }. La manda el
+// servidor, que es quien manda de verdad — la campana solo la refleja.
+let availability = null;
 let triggerCatalog = [];   // tipos de aviso que ofrece el servidor
 let categoryCatalog = [];  // y las categorias en las que se agrupan
 let lastDevices = [];      // ultima lista de dispositivos suscritos pintada
 let swReg = null;
 
 let wsOpen = false;
+// Instante en que arranco el proceso del servidor, en el reloj de ESTE
+// navegador: se calcula restando el uptime que manda el snapshot, y asi el
+// cronometro no hereda el desfase entre los dos relojes.
+let serverBootAt = null;
 let lastDataAt = null;     // ultima vez que llego un estado de la impresora
 let cloudOk = false;
 let statusDetail = '';     // motivo que da el servidor cuando algo va mal
@@ -2199,6 +2248,13 @@ function connectWs() {
       if (payload.printer) renderPrinter(payload.printer);
       lastCycle = payload.cycle || null;
       settings = payload.settings || null;
+      availability = payload.availability || null;
+      // Si el numero es mas pequeno que el que teniamos, el servidor se ha
+      // reiniciado: el cronometro vuelve a cero solo y eso es exactamente lo
+      // que se quiere ver.
+      if (typeof payload.uptimeSec === 'number') {
+        serverBootAt = Date.now() - payload.uptimeSec * 1000;
+      }
       pushConfig = payload.push || pushConfig;
       lastDataAt = payload.lastMessageAt || null;
       if (payload.state) renderState(payload.state);
@@ -2209,6 +2265,7 @@ function connectWs() {
       handleLoginPending(payload.loginPending);
       syncNotifyButton();
       paintSync();
+      paintUptime();
       // La clave VAPID llega con el snapshot: buen momento para asegurar la
       // suscripcion de un dispositivo que ya tenia el permiso concedido.
       if (CAN_NOTIFY && Notification.permission === 'granted') ensurePush();
@@ -2223,6 +2280,9 @@ function connectWs() {
       renderStatusPanel();
     }
     else if (type === 'settings') { settings = payload; paintSettings(); }
+    // Llega tanto al pulsar la campana en otra pantalla como sin que nadie
+    // toque nada: a las 9:00 el servidor vuelve a "disponible" el solo.
+    else if (type === 'availability') { availability = payload; syncNotifyButton(); }
     else if (type === 'devices') {
       pushConfig = { ...pushConfig, ...(payload.push || {}) };
       // Solo con el panel delante: fuera de el la lista no se ve y pintarla
@@ -2238,6 +2298,7 @@ function connectWs() {
   // se pone en rojo y su `title` explica de que lado se ha perdido la conexion.
   ws.onclose = () => {
     wsOpen = false;
+    paintUptime();
     paintSync();
     setTimeout(connectWs, 3000);
   };
@@ -2336,6 +2397,60 @@ function isSynced() {
   if (!lastDataAt) return false;
   return Date.now() - lastDataAt < STALE_MS;
 }
+
+/**
+ * Cronometro de vigilia del pie.
+ *
+ * Cuenta cuanto lleva EN PIE EL PROCESO DEL SERVIDOR, no cuanto lleva abierta
+ * la pestana. La diferencia es todo el motivo de que exista: en el plan
+ * gratuito de Render el servicio se duerme, se reinicia y se redespliega solo,
+ * y cada uno de esos reinicios se lleva por delante el estado guardado. Verlo
+ * volver a cero es la unica forma de saber, sin mirar logs, que "esto se ha
+ * desactivado solo" fue en realidad un arranque en frio.
+ *
+ * Con la conexion caida no se sigue contando hacia arriba: el servidor puede
+ * estar dormido, y un numero que sigue subiendo mientras el otro lado esta
+ * apagado seria mentira.
+ */
+function uptimeText(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return `${s} s`;
+  const min = Math.floor(s / 60);
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return min % 60 ? `${h} h ${min % 60} min` : `${h} h`;
+  const d = Math.floor(h / 24);
+  return h % 24 ? `${d} d ${h % 24} h` : `${d} d`;
+}
+
+function paintUptime() {
+  const box = $('uptime');
+  const text = $('uptime-text');
+  if (!box) return;
+
+  if (!wsOpen || serverBootAt == null) {
+    box.classList.add('off');
+    box.classList.remove('fresh');
+    text.textContent = serverBootAt == null
+      ? 'Conectando…'
+      : `Sin conexión · despierta ${uptimeText(Date.now() - serverBootAt)} hasta hace un momento`;
+    return;
+  }
+
+  const up = Date.now() - serverBootAt;
+  box.classList.remove('off');
+  // Menos de cinco minutos es un reinicio reciente, y merece que se lea.
+  box.classList.toggle('fresh', up < 5 * 60_000);
+  text.textContent = `Despierta desde hace ${uptimeText(up)}`;
+  box.title =
+    `Este proceso del servidor arrancó a las ` +
+    `${new Date(serverBootAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. ` +
+    'Si el contador vuelve a cero, Render lo ha reiniciado.';
+}
+
+// Un segundo de resolucion mientras se cuentan segundos, y da igual el resto
+// del tiempo: el intervalo es barato y el codigo con un solo reloj, mas corto.
+setInterval(paintUptime, 1000);
 
 function paintSync() {
   const btn = $('btn-sync');
@@ -2917,21 +3032,90 @@ async function activateNotifications() {
   return r;
 }
 
+/** La hora a la que vuelve solo el "estoy disponible", como "9:00". */
+function resetLabel() {
+  return `${availability?.resetHour ?? 9}:00`;
+}
+
+/** Si ahora mismo el usuario se ha declarado no disponible. */
+function isAway() {
+  return availability?.available === false;
+}
+
+/**
+ * La campana tiene dos vidas, y cual de las dos depende del permiso del
+ * navegador.
+ *
+ * Sin permiso concedido no hay nada que silenciar, asi que el boton es lo que
+ * siempre fue: el que lo pide. Concedido, la pregunta "quiero avisos?" ya esta
+ * contestada y pasa a mandar la otra, la que cambia varias veces al dia:
+ * "estoy disponible para atenderlos?".
+ *
+ * Los dos estados se distinguen por color y no solo por el icono tachado:
+ * verde disponible, ambar no disponible, gris apagado sin permiso.
+ */
 function syncNotifyButton() {
   const btn = $('btn-notify');
   if (!CAN_NOTIFY) { btn.classList.add('hidden'); return; }
   const granted = Notification.permission === 'granted';
-  btn.classList.toggle('active', granted);
-  btn.title = granted
-    ? 'Avisos activos en este dispositivo'
-    : Notification.permission === 'denied'
+  const away = granted && isAway();
+
+  btn.classList.toggle('active', granted && !away);
+  btn.classList.toggle('muted', away);
+
+  btn.title = !granted
+    ? Notification.permission === 'denied'
       ? 'Avisos bloqueados en los ajustes del navegador'
-      : 'Activar avisos en este dispositivo';
+      : 'Activar avisos en este dispositivo'
+    : away
+      // La hora de vuelta va en el titulo a proposito: es lo que evita el
+      // "creia que los tenia puestos" de dentro de tres dias.
+      ? `No estoy disponible · sin avisos hasta las ${resetLabel()}`
+      : 'Estoy disponible · toca para no recibir avisos hasta mañana';
+  btn.setAttribute('aria-label', btn.title);
+}
+
+/**
+ * Cambia la disponibilidad en el servidor.
+ *
+ * No se pinta nada por adelantado: la lleva el servidor porque tiene que valer
+ * para todos los dispositivos a la vez y porque el reset de las 9:00 es suyo.
+ * El repintado llega por WebSocket, y con el la confirmacion de que de verdad
+ * ha quedado guardado.
+ */
+async function setAvailability(available) {
+  const btn = $('btn-notify');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/availability', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ available }),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'No se pudo cambiar');
+    availability = j.availability;
+    syncNotifyButton();
+    toast(
+      available
+        ? 'Estás disponible: los avisos vuelven a sonar'
+        : `Sin avisos hasta las ${resetLabel()}`,
+      available ? 'ok' : '',
+    );
+  } catch (err) {
+    toast(err.message || 'No se pudo cambiar la disponibilidad', 'err');
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 $('btn-notify').onclick = async () => {
-  const r = await activateNotifications();
-  if (r.ok) toast('Avisos activados en este dispositivo', 'ok');
+  if (Notification.permission !== 'granted') {
+    const r = await activateNotifications();
+    if (r.ok) toast('Avisos activados en este dispositivo', 'ok');
+    return;
+  }
+  await setAvailability(isAway());
 };
 
 /** Aviso en pantalla cuando la pestana esta abierta. */
@@ -3229,6 +3413,7 @@ async function showAdminPanel() {
   try {
     const r = await fetch('/api/settings').then((x) => x.json());
     settings = r.settings;
+    if (r.availability) { availability = r.availability; syncNotifyButton(); }
     triggerCatalog = r.triggers || triggerCatalog;
     categoryCatalog = r.categories || categoryCatalog;
     pushConfig = r.push || pushConfig;

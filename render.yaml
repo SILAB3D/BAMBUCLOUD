@@ -13,6 +13,12 @@
 # email), pero si el servicio se reinicia mientras nadie mira, los avisos al
 # movil no llegan hasta la siguiente visita.
 #
+# ES CASI SIEMPRE LA EXPLICACION DE "las notificaciones se han desactivado
+# solas": no se desactivan, el proceso arranca de cero y vuelve a
+# DEFAULT_SETTINGS. Por eso ese punto de partida deja las basicas encendidas
+# (src/notifier.js) y por eso /api/health publica `storage.loadedAtBoot`: para
+# poder distinguir un arranque en frio de una averia sin adivinar.
+#
 # Mantener el servicio despierto 24/7 NO arregla esto: evita que se duerma,
 # pero no que Render lo reinicie o redespliegue. Para que todo persista de
 # verdad: plan `starter` y descomentar el bloque `disk` de abajo.

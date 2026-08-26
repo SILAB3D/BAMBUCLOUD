@@ -35,11 +35,16 @@ export const CATEGORIES = [
     key: 'basic',
     label: 'Notificaciones básicas',
     desc: 'Enfriamiento, pieza lista y errores de la impresora.',
+    // Encendida de fabrica: es el minimo por el que uno instala esto.
+    defaultOn: true,
   },
   {
     key: 'other',
     label: 'Otras notificaciones',
     desc: 'Seguimiento del trabajo: inicio, fin, pausas y progreso.',
+    // Apagada de fabrica: es seguimiento, y encendido convierte una impresion
+    // de seis horas en una docena de vibraciones.
+    defaultOn: false,
   },
 ];
 
@@ -118,17 +123,29 @@ export const TRIGGERS = [
 const CATEGORY_OF = new Map(TRIGGERS.map((t) => [t.key, t.category]));
 
 /**
- * Todo llega apagado, a proposito, y ahora quien lo apaga son las categorias.
+ * Valores de fabrica: basicas encendidas, el resto apagado.
  *
- * En el plan gratuito de Render no hay disco: cada reinicio del servicio se
+ * ESTO NO ES SOLO "EL PRIMER ARRANQUE"
+ * ------------------------------------
+ * En el plan gratuito de Render no hay disco: cada reinicio o redespliegue se
  * lleva por delante `bambu-state.json` y con el los ajustes, asi que lo que
- * este aqui es lo que habra tras cada redespliegue o cada vez que el servicio
- * despierte de cero. Con las dos categorias apagadas, el silencio es el punto
- * de partida; al reves —arrancar con `cooling`/`ready` encendidos— cualquier
- * reinicio reactivaba solo unos avisos que quiza se habian apagado hace un
- * minuto.
+ * este aqui es lo que habra CADA VEZ que el servicio arranque de cero. Es la
+ * unica configuracion que se puede dar por segura.
  *
- * Los interruptores individuales SI arrancan encendidos: asi encender una
+ * Durante un tiempo las dos categorias arrancaban apagadas, buscando que un
+ * reinicio no reactivara solo unos avisos recien silenciados. El efecto real
+ * fue el contrario y peor: un redespliegue de madrugada dejaba el dashboard
+ * mudo sin que nada lo indicara, y la primera senal era una impresion
+ * terminada de la que nadie se entero. Silenciar es reversible mirando el
+ * panel; no enterarse, no.
+ *
+ * Asi que el arranque en frio deja lo minimo por lo que uno tiene esto
+ * instalado (enfriamiento, pieza lista, errores) y calla el seguimiento. Para
+ * "ahora no quiero que suene" esta la campana de la pantalla principal, que es
+ * la pregunta que de verdad se hace varias veces al dia y no sobrevive a los
+ * reinicios por diseno: ver src/availability.js.
+ *
+ * Los interruptores individuales arrancan todos encendidos: asi encender una
  * categoria enciende de verdad lo que promete, en vez de dejar al usuario
  * delante de una lista que sigue muda hasta que la recorre entera.
  *
@@ -137,7 +154,7 @@ const CATEGORY_OF = new Map(TRIGGERS.map((t) => [t.key, t.category]));
  */
 export const DEFAULT_SETTINGS = {
   enabled: true,
-  groups: Object.fromEntries(CATEGORIES.map((c) => [c.key, false])),
+  groups: Object.fromEntries(CATEGORIES.map((c) => [c.key, c.defaultOn === true])),
   triggers: Object.fromEntries(TRIGGERS.map((t) => [t.key, true])),
 };
 
@@ -161,6 +178,7 @@ export class Notifier extends EventEmitter {
    * @param {number} [opts.progressStep] notificar cada N% (0 = desactivado)
    * @param {import('./store.js').Store} [opts.store]
    * @param {import('./push.js').PushHub} [opts.push]
+   * @param {() => boolean} [opts.isAvailable] disponibilidad del usuario
    */
   constructor(opts = {}) {
     super();
@@ -171,6 +189,10 @@ export class Notifier extends EventEmitter {
     this.progressStep = Number(opts.progressStep ?? 0);
     this.store = opts.store || null;
     this.push = opts.push || null;
+    // Se inyecta como funcion y no como valor porque cambia sola: a las 9:00
+    // vuelve a "disponible" sin que nadie avise al notificador. Ver
+    // src/availability.js.
+    this.isAvailable = opts.isAvailable || (() => true);
 
     this.prev = null;
     this.seenHms = new Set();
@@ -220,14 +242,21 @@ export class Notifier extends EventEmitter {
   }
 
   /**
-   * Tres llaves en serie, de la mas general a la mas concreta: el interruptor
-   * maestro, el de la categoria a la que pertenece el aviso, y el suyo propio.
-   * Basta con que una este abierta... perdon, cerrada, para que no salga nada.
+   * Cuatro llaves en serie, de la mas general a la mas concreta: la
+   * disponibilidad del usuario, el interruptor maestro, el de la categoria a
+   * la que pertenece el aviso, y el suyo propio. Basta con que una este
+   * cerrada para que no salga nada.
+   *
+   * La disponibilidad va la primera y a proposito no toca los ajustes: es un
+   * "ahora no" que se deshace solo a las 9:00, no una reconfiguracion. Lo que
+   * pase mientras tanto sigue entrando en el historial, asi que al volver se
+   * ve todo lo que ocurrio.
    *
    * Un tipo que no este en el catalogo (uno nuevo que aun no tenga ficha) pasa
    * la parte de categoria: mejor que avise de mas a que se pierda en silencio.
    */
   allows(type) {
+    if (!this.isAvailable()) return false;
     const s = this.settings;
     if (!s.enabled) return false;
     const category = CATEGORY_OF.get(type);

@@ -32,6 +32,7 @@ import { JobCycle } from './job-cycle.js';
 import { FineProgress } from './progress.js';
 import { ERROR_DB_INFO } from './error-codes.js';
 import { parseWindow, insideWindow, estimateMonthlyHours } from './wake.js';
+import { Availability } from './availability.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -47,6 +48,9 @@ const DASH_PASSWORD = process.env.DASHBOARD_PASSWORD || '';
 const AGENT_TOKEN = process.env.AGENT_TOKEN || '';
 const ADMIN_CODE = String(process.env.ADMIN_CODE || '1510');
 const COOL_MS = Number(process.env.COOLDOWN_MS || 15 * 60_000);
+// La misma zona sirve para dos relojes distintos: la franja de vigilia del
+// keep-alive y el "vuelvo a estar disponible" de las 9:00.
+const WAKE_TZ = process.env.WAKE_TZ || 'Europe/Madrid';
 
 // ---------------------------------------------------------------------------
 // Estado global del proceso
@@ -59,7 +63,20 @@ const store = new Store(STATE_FILE, {
   cycle: null,
   sessions: {},
   sessionSecret: null,
+  availability: null,
 });
+
+// Aviso de arranque en frio. Sin disco persistente (plan free de Render) este
+// fichero no existe tras cada reinicio, y con el se van los ajustes de avisos,
+// las suscripciones push y el historial. Verlo en el log es la diferencia entre
+// "las notificaciones se apagaron solas" y "el servicio arranco de cero a las
+// 4:12"; ver el bloque sobre el disco en render.yaml.
+if (!store.loaded) {
+  console.warn(
+    `[store] ${STATE_FILE} no existia: arranque en frio con los ajustes de fábrica ` +
+      '(básicas activas, otras no) y sin dispositivos push hasta que alguien abra la web',
+  );
+}
 
 // La sesion del dashboard dura hasta que se pulsa "Salir": diez años de cookie
 // y `rolling` para que cada visita la renueve. El limite real lo pone el
@@ -90,6 +107,14 @@ const push = new PushHub({
   store,
 });
 
+/**
+ * "Estoy disponible" / "no estoy disponible", el interruptor de la campana.
+ *
+ * Va por delante de todos los ajustes del panel y vuelve solo a "disponible"
+ * cada dia a las 9:00 hora de `WAKE_TZ`. Ver src/availability.js.
+ */
+const availability = new Availability({ store, tz: WAKE_TZ });
+
 const notifier = new Notifier({
   telegramToken: process.env.TELEGRAM_BOT_TOKEN,
   telegramChatId: process.env.TELEGRAM_CHAT_ID,
@@ -98,6 +123,18 @@ const notifier = new Notifier({
   progressStep: Number(process.env.NOTIFY_PROGRESS_STEP || 0),
   store,
   push,
+  isAvailable: () => availability.available,
+});
+
+// El cambio puede venir de la campana de cualquier pantalla o del reset de las
+// 9:00, que no lo pide nadie: en los dos casos el resto de pestanas abiertas
+// tienen que enterarse sin recargar.
+availability.on('change', (state) => {
+  console.log(
+    `[disponibilidad] ${state.available ? 'disponible' : 'no disponible'} ` +
+      `(vuelve a las ${String(state.resetHour).padStart(2, '0')}:00, ${state.tz})`,
+  );
+  broadcast('availability', state);
 });
 
 const jobCycle = new JobCycle({ coolMs: COOL_MS, store });
@@ -184,8 +221,14 @@ function snapshot() {
     historyDays: HISTORY_DAYS,
     cycle: jobCycle.toJSON(),
     settings: notifier.settings,
+    availability: availability.toJSON(),
     push: pushInfo(),
     loginPending: app_state.loginPending,
+    // Segundos desde que arranco ESTE proceso, no una marca de tiempo: asi el
+    // navegador la traduce con su propio reloj y no hereda el desfase del
+    // servidor. Lo interesante no es el numero, es verlo volver a cero: eso es
+    // un reinicio de Render, que es lo que se lleva por delante los ajustes.
+    uptimeSec: Math.round(process.uptime()),
     connected: Boolean(app_state.cloud?.connected),
     lastMessageAt: app_state.cloud?.lastMessageAt || null,
   };
@@ -434,7 +477,6 @@ const ACTIVE_STATES = new Set(['RUNNING', 'PREPARE', 'PAUSE']);
 // para la cuenta de horas. "9-23" la limita a la franja diurna y "off" la
 // desactiva del todo.
 const WAKE_WINDOW = parseWindow(process.env.WAKE_WINDOW ?? '0-24');
-const WAKE_TZ = process.env.WAKE_TZ || 'Europe/Madrid';
 
 function printJobActive() {
   return ACTIVE_STATES.has(app_state.normalized?.state);
@@ -461,16 +503,30 @@ function wakeReason() {
   return null;
 }
 
-async function ping(reason) {
-  if (!KEEPALIVE_URL) return;
+/**
+ * Un ping al propio servidor: es lo que cuenta como trafico ENTRANTE y evita
+ * que Render duerma el servicio.
+ *
+ * El reintento no es adorno. El margen real es de cinco minutos —se pincha cada
+ * 10 y se duerme a los 15—, asi que un solo fallo de red deja un hueco de 20
+ * minutos y el servicio se duerme. Dormido no puede despertarse solo, y ahi ya
+ * hay que esperar al cron externo. Un reintento a los 45 s convierte ese fallo
+ * suelto en nada.
+ */
+async function ping(reason, { retry = true } = {}) {
+  if (!KEEPALIVE_URL) return false;
   try {
     const res = await fetch(new URL('/api/health', KEEPALIVE_URL), {
       headers: { 'user-agent': 'bambucloud-keepalive' },
       signal: AbortSignal.timeout(20_000),
     });
     console.log(`[keepalive] ping ${res.status} (${reason})`);
+    return true;
   } catch (err) {
     console.error('[keepalive]', err.message);
+    if (!retry) return false;
+    await new Promise((r) => setTimeout(r, 45_000).unref?.());
+    return ping(`${reason}, reintento`, { retry: false });
   }
 }
 
@@ -850,6 +906,7 @@ app.get('/api/admin/status', requireAuth, (req, res) => {
 app.get('/api/settings', requireAuth, (req, res) => {
   res.json({
     settings: notifier.settings,
+    availability: availability.toJSON(),
     // El cliente dibuja un interruptor por entrada, agrupados por categoria:
     // las dos listas mandan.
     categories: CATEGORIES,
@@ -866,6 +923,30 @@ app.get('/api/settings', requireAuth, (req, res) => {
     },
     account: process.env.BAMBU_EMAIL || null,
   });
+});
+
+/**
+ * Disponibilidad: la campana de la pantalla principal.
+ *
+ * Sin `requireAdmin` a proposito. Los interruptores del panel son
+ * configuracion —de que quiero enterarme— y por eso piden codigo; esto es un
+ * "ahora no" que se pulsa a diario y se deshace solo a las 9:00. Pedir el
+ * codigo cada noche garantizaba que nadie lo usara y que la gente acabara
+ * apagando categorias enteras, que es lo que no queremos.
+ */
+app.get('/api/availability', requireAuth, (req, res) => {
+  res.json(availability.toJSON());
+});
+
+app.post('/api/availability', requireAuth, (req, res) => {
+  if (typeof req.body?.available !== 'boolean') {
+    return res.status(400).json({ error: 'Falta "available" (true/false)' });
+  }
+  const state = availability.set(req.body.available);
+  // Sin pasar por el evento: `set` solo lo emite cuando hay cambio real, y el
+  // resto de pantallas tiene que quedar sincronizado igualmente.
+  broadcast('availability', state);
+  res.json({ ok: true, availability: state });
 });
 
 app.put('/api/settings', requireAuth, requireAdmin, (req, res) => {
@@ -946,6 +1027,10 @@ app.get('/api/health', (req, res) => {
     coolingRemainingMs: jobCycle.coolingRemainingMs(),
     keepAlive: Boolean(KEEPALIVE_URL),
     awake: needsWakefulness(),
+    availability: availability.toJSON(),
+    // Lo primero que hay que mirar cuando algo "se ha apagado solo": si el
+    // estado sobrevive a los reinicios o si cada arranque empieza de cero.
+    storage: { file: STATE_FILE, loadedAtBoot: store.loaded },
     wake: {
       reason: wakeReason(),
       window: WAKE_WINDOW ? `${WAKE_WINDOW.start}-${WAKE_WINDOW.end}` : null,
@@ -1021,6 +1106,13 @@ wss.on('connection', (ws) => {
   ws.on('close', () => clearInterval(ping));
 });
 
+// El reset de las 9:00 se deduce al consultarlo (ver src/availability.js), pero
+// nadie consulta nada si no hay impresiones: sin este tic, quien tuviera la web
+// abierta veria la campana tachada hasta el siguiente aviso. Un minuto de
+// resolucion sobra para una hora en punto, y si el proceso estaba dormido el
+// reset se aplica igual en cuanto vuelve.
+setInterval(() => availability.state(), 60_000).unref?.();
+
 server.listen(PORT, () => {
   console.log(`Dashboard escuchando en http://localhost:${PORT}`);
   console.log(`[store] estado en ${STATE_FILE} (${notifier.history.length} eventos)`);
@@ -1056,6 +1148,10 @@ server.listen(PORT, () => {
     } else {
       console.log('[keepalive] sin franja de vigilancia (WAKE_WINDOW desactivada)');
     }
+    // Uno nada mas arrancar: si este arranque viene de un reinicio a las 4 de
+    // la manana, el reloj de los 15 minutos de Render ya esta corriendo y el
+    // primero del intervalo no llega hasta dentro de 10.
+    keepAlive();
     setInterval(keepAlive, KEEPALIVE_MS);
     // El proceso pudo caerse a mitad del enfriamiento: retomamos la cadena.
     armCoolingKeepAlive();
