@@ -23,8 +23,8 @@ const HISTORY_MAX = 600;
  * Las dos categorias de avisos.
  *
  * `basic` es el minimo por el que uno tiene esto instalado: cuando la pieza se
- * esta enfriando, cuando ya se puede tocar, y cuando la maquina reporta un
- * error. Todo lo demas es seguimiento, util pero prescindible, y va en `other`.
+ * esta enfriando, cuando ya se puede tocar, cuando la cama queda libre, y
+ * cuando la maquina reporta un error. Todo lo demas es seguimiento, util pero prescindible, y va en `other`.
  *
  * Cada categoria tiene su propio interruptor, que actua de llave maestra sobre
  * los avisos que contiene: apagar la categoria los calla todos sin perder que
@@ -34,7 +34,7 @@ export const CATEGORIES = [
   {
     key: 'basic',
     label: 'Notificaciones básicas',
-    desc: 'Enfriamiento, pieza lista y errores de la impresora.',
+    desc: 'Enfriamiento, pieza lista, cama vaciada y errores de la impresora.',
     // Encendida de fabrica: es el minimo por el que uno instala esto.
     defaultOn: true,
   },
@@ -68,6 +68,12 @@ export const TRIGGERS = [
     category: 'basic',
     label: 'La impresión puede retirarse',
     desc: 'Cuando la cama ya se ha enfriado y la pieza se puede sacar.',
+  },
+  {
+    key: 'collected',
+    category: 'basic',
+    label: 'Cama vaciada',
+    desc: 'Al confirmar «ya la he retirado»: la cama queda libre para el siguiente trabajo.',
   },
   {
     key: 'hms',

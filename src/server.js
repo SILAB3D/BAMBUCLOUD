@@ -730,7 +730,18 @@ app.get('/api/cycle', requireAuth, (req, res) => res.json(jobCycle.toJSON()));
 
 /** "Ya la he retirado": cierra el ciclo y devuelve el panel a reposo. */
 app.post('/api/cycle/collected', requireAuth, (req, res) => {
+  // Se mira antes de cerrar: si el ciclo ya estaba en reposo no habia pieza
+  // que retirar, y avisar de una cama que ya estaba vacia es ruido.
+  const hadPiece = jobCycle.phase !== 'idle';
+  const jobName = jobCycle.jobName;
   jobCycle.clear({ collected: true });
+  if (hadPiece) {
+    notifier.fire('collected', '🧹 Cama vaciada, lista para el siguiente trabajo', {
+      printerName: app_state.printer?.name || 'Bambu Lab A1',
+      level: 'success',
+      ...(jobName && { detail: jobName }),
+    });
+  }
   // Se difunde a mano: si el ciclo ya estaba en `idle`, `clear` no cambia de
   // fase y no emite nada, y las demas pantallas seguirian anunciando el 100 %
   // de una pieza que acaban de retirar en la de al lado.

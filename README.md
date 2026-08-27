@@ -402,7 +402,7 @@ El desbloqueo dura una hora: la sesión del dashboard no caduca, pero el panel s
 - **Enviar notificaciones**: interruptor general de los avisos de la app.
 - **Dos categorías, cada una con su interruptor maestro**:
   - **Notificaciones básicas** — la impresión se está enfriando, la impresión puede retirarse,
-    y los errores de la impresora (HMS).
+    la cama ha quedado vacía y los errores de la impresora (HMS).
   - **Otras notificaciones** — iniciada, terminada, en pausa, reanudada, fallida, atención
     requerida e hitos de progreso.
 - **Un interruptor por tipo de aviso**, dentro de su categoría. Con la disponibilidad de la
