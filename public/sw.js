@@ -1,6 +1,6 @@
 /* eslint-env serviceworker */
 /**
- * Service Worker del dashboard.
+ * Service Worker de Bambustatus.
  *
  * Hace dos cosas:
  *   1. Cachea el armazon de la interfaz para que la PWA abra al instante y
@@ -13,7 +13,7 @@
  * dato viejo es peor que ningun dato.
  */
 
-const CACHE = 'bambu-shell-v9';
+const CACHE = 'bambustatus-shell-v10';
 // Sin '/index.html': el servidor lo entrega en '/', y pedir los dos en el
 // mismo addAll hace que el navegador aborte la instalacion entera con
 // "Entry already exists". Un Service Worker que no instala no solo deja de
@@ -101,7 +101,7 @@ self.addEventListener('push', (event) => {
     data = { body: event.data ? event.data.text() : '' };
   }
 
-  const title = data.title || 'Bambu Lab';
+  const title = data.title || 'Bambustatus';
   const options = {
     body: data.body || '',
     // `tag` colapsa avisos del mismo tipo: si el movil estuvo sin cobertura no

@@ -27,12 +27,11 @@ import { Store } from './store.js';
 import { JsonSessionStore } from './session-store.js';
 import { KeepCookie, KEEP_MAX_AGE_MS } from './keep-cookie.js';
 import { LoginGuard, guarded } from './rate-limit.js';
-import { PushHub } from './push.js';
+import { PushHub, MUTE_HOURS } from './push.js';
 import { JobCycle } from './job-cycle.js';
 import { FineProgress } from './progress.js';
 import { ERROR_DB_INFO } from './error-codes.js';
 import { parseWindow, insideWindow, estimateMonthlyHours } from './wake.js';
-import { Availability } from './availability.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -63,7 +62,6 @@ const store = new Store(STATE_FILE, {
   cycle: null,
   sessions: {},
   sessionSecret: null,
-  availability: null,
 });
 
 // Aviso de arranque en frio. Sin disco persistente (plan free de Render) este
@@ -107,14 +105,6 @@ const push = new PushHub({
   store,
 });
 
-/**
- * "Estoy disponible" / "no estoy disponible", el interruptor de la campana.
- *
- * Va por delante de todos los ajustes del panel y vuelve solo a "disponible"
- * cada dia a las 9:00 hora de `WAKE_TZ`. Ver src/availability.js.
- */
-const availability = new Availability({ store, tz: WAKE_TZ });
-
 const notifier = new Notifier({
   telegramToken: process.env.TELEGRAM_BOT_TOKEN,
   telegramChatId: process.env.TELEGRAM_CHAT_ID,
@@ -123,18 +113,6 @@ const notifier = new Notifier({
   progressStep: Number(process.env.NOTIFY_PROGRESS_STEP || 0),
   store,
   push,
-  isAvailable: () => availability.available,
-});
-
-// El cambio puede venir de la campana de cualquier pantalla o del reset de las
-// 9:00, que no lo pide nadie: en los dos casos el resto de pestanas abiertas
-// tienen que enterarse sin recargar.
-availability.on('change', (state) => {
-  console.log(
-    `[disponibilidad] ${state.available ? 'disponible' : 'no disponible'} ` +
-      `(vuelve a las ${String(state.resetHour).padStart(2, '0')}:00, ${state.tz})`,
-  );
-  broadcast('availability', state);
 });
 
 const jobCycle = new JobCycle({ coolMs: COOL_MS, store });
@@ -205,6 +183,9 @@ function pushInfo() {
     publicKey: push.publicKey,
     devices: push.count,
     active: push.activeCount,
+    // Los que ha callado su dueno desde la campana, no el panel: sin esto, un
+    // "0 de 3 confirmando" en el panel no tiene explicacion visible.
+    muted: push.mutedCount,
   };
 }
 
@@ -221,7 +202,6 @@ function snapshot() {
     historyDays: HISTORY_DAYS,
     cycle: jobCycle.toJSON(),
     settings: notifier.settings,
-    availability: availability.toJSON(),
     push: pushInfo(),
     loginPending: app_state.loginPending,
     // Segundos desde que arranco ESTE proceso, no una marca de tiempo: asi el
@@ -869,6 +849,72 @@ app.delete('/api/admin/devices/:id', requireAuth, requireAdmin, (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Preferencias de ESTE dispositivo (la campana de la pantalla principal)
+//
+// Deliberadamente sin `requireAdmin`. La diferencia con el panel no es de
+// importancia, es de alcance: el panel decide lo que reciben TODOS y por eso
+// pide codigo; esto solo puede quitarle avisos al movil desde el que se pulsa,
+// y es una pregunta que uno se hace varias veces al dia. Pedir el codigo cada
+// noche garantizaba que nadie lo usara y que la gente acabara apagando
+// categorias enteras para todo el mundo, que es justo lo que no queremos.
+//
+// El identificador es el de la suscripcion push, asi que solo existe para un
+// dispositivo que ya tiene los avisos concedidos. Sin eso no hay nada que
+// personalizar, y la campana lo que ofrece es concederlos.
+// ---------------------------------------------------------------------------
+
+/**
+ * Todo lo que la campana necesita para pintarse: el aparato, lo que el panel
+ * deja elegir, y lo que este ha elegido.
+ */
+function deviceView(id) {
+  const device = push.devices.find((d) => d.id === id);
+  if (!device) return null;
+  const settings = notifier.settings;
+  return {
+    device,
+    // Solo las de "otras": las basicas no se negocian, y mandar la lista
+    // entera invitaria a dibujar interruptores que no hacen nada.
+    triggers: TRIGGERS.filter((t) => t.category === 'other'),
+    categories: CATEGORIES,
+    settings,
+    muteHours: MUTE_HOURS,
+  };
+}
+
+app.get('/api/device/:id', requireAuth, (req, res) => {
+  const view = deviceView(String(req.params.id));
+  if (!view) return res.status(404).json({ error: 'Dispositivo no encontrado' });
+  res.json(view);
+});
+
+app.put('/api/device/:id/prefs', requireAuth, (req, res) => {
+  const prefs = req.body?.prefs;
+  if (!prefs || typeof prefs !== 'object') {
+    return res.status(400).json({ error: 'Falta "prefs"' });
+  }
+  // Un tipo que no sea de "otras" no se guarda: dejar que un dispositivo se
+  // quite las basicas por API vaciaria de sentido la categoria.
+  const allowed = new Set(TRIGGERS.filter((t) => t.category === 'other').map((t) => t.key));
+  const clean = Object.fromEntries(
+    Object.entries(prefs).filter(([k, v]) => allowed.has(k) && typeof v === 'boolean'),
+  );
+  const result = push.setPrefs(String(req.params.id), clean);
+  if (!result.ok) return res.status(404).json(result);
+  broadcastDevices();
+  res.json(deviceView(String(req.params.id)));
+});
+
+app.post('/api/device/:id/mute', requireAuth, (req, res) => {
+  const result = push.mute(String(req.params.id), Number(req.body?.hours) || 0);
+  if (!result.ok) {
+    return res.status(result.error?.startsWith('Solo') ? 400 : 404).json(result);
+  }
+  broadcastDevices();
+  res.json(deviceView(String(req.params.id)));
+});
+
+// ---------------------------------------------------------------------------
 // Administracion
 //
 // El codigo es una barrera de conveniencia sobre una sesion ya autenticada,
@@ -917,7 +963,6 @@ app.get('/api/admin/status', requireAuth, (req, res) => {
 app.get('/api/settings', requireAuth, (req, res) => {
   res.json({
     settings: notifier.settings,
-    availability: availability.toJSON(),
     // El cliente dibuja un interruptor por entrada, agrupados por categoria:
     // las dos listas mandan.
     categories: CATEGORIES,
@@ -936,36 +981,47 @@ app.get('/api/settings', requireAuth, (req, res) => {
   });
 });
 
-/**
- * Disponibilidad: la campana de la pantalla principal.
- *
- * Sin `requireAdmin` a proposito. Los interruptores del panel son
- * configuracion —de que quiero enterarme— y por eso piden codigo; esto es un
- * "ahora no" que se pulsa a diario y se deshace solo a las 9:00. Pedir el
- * codigo cada noche garantizaba que nadie lo usara y que la gente acabara
- * apagando categorias enteras, que es lo que no queremos.
- */
-app.get('/api/availability', requireAuth, (req, res) => {
-  res.json(availability.toJSON());
-});
-
-app.post('/api/availability', requireAuth, (req, res) => {
-  if (typeof req.body?.available !== 'boolean') {
-    return res.status(400).json({ error: 'Falta "available" (true/false)' });
-  }
-  const state = availability.set(req.body.available);
-  // Sin pasar por el evento: `set` solo lo emite cuando hay cambio real, y el
-  // resto de pantallas tiene que quedar sincronizado igualmente.
-  broadcast('availability', state);
-  res.json({ ok: true, availability: state });
-});
-
 app.put('/api/settings', requireAuth, requireAdmin, (req, res) => {
   const settings = notifier.updateSettings(req.body || {});
   broadcast('settings', settings);
   res.json({ ok: true, settings });
 });
 
+/**
+ * "Abre la app: viene una actualizacion."
+ *
+ * Cargar una version nueva reinicia la interfaz de todos los navegadores
+ * abiertos, quieran o no: el HTML lleva dentro su propio JavaScript y no hay
+ * forma de cambiarlo en caliente. Un movil con la PWA dormida desde hace dias
+ * se queda ademas con una copia vieja que puede no entender lo que le manda el
+ * servidor, y el sintoma —una pantalla que no se actualiza— no se parece en
+ * nada a su causa.
+ *
+ * Asi que se avisa antes, a mano y a proposito. Salta los interruptores del
+ * panel (lo esta pulsando una persona, y es operativo, no seguimiento) pero
+ * respeta el silencio de cada dispositivo: eso lo ha decidido su dueno.
+ */
+app.post('/api/admin/announce', requireAuth, requireAdmin, (req, res) => {
+  const custom = String(req.body?.text || '').trim().slice(0, 160);
+  const event = notifier.announce(custom || '🔄 Abre la app: hay una actualización en camino', {
+    printerName: 'Bambustatus',
+    detail: custom
+      ? null
+      : 'Al aplicarse, la interfaz se reiniciará. Ábrela para no quedarte con una versión vieja.',
+  });
+  // El reparto lo hace fire() por dentro y no se espera a que termine: lo
+  // que el panel necesita saber no es si el push service ha contestado, sino
+  // a cuantos aparatos iba dirigido y cuantos estaban callados.
+  const reach = push.enabled ? push.activeCount : 0;
+  console.log(`[aviso] actualizacion anunciada a ${reach} dispositivo(s)`);
+  res.json({
+    ok: true,
+    sent: reach,
+    devices: push.count,
+    muted: push.mutedCount,
+    at: event.at,
+  });
+});
 /**
  * Cierra la sesion de Bambu Cloud: corta el MQTT y borra el token cacheado.
  * El proximo arranque (o el boton de sincronizar) volvera a pedir el codigo de
@@ -1038,7 +1094,7 @@ app.get('/api/health', (req, res) => {
     coolingRemainingMs: jobCycle.coolingRemainingMs(),
     keepAlive: Boolean(KEEPALIVE_URL),
     awake: needsWakefulness(),
-    availability: availability.toJSON(),
+    devicesMuted: push.mutedCount,
     // Lo primero que hay que mirar cuando algo "se ha apagado solo": si el
     // estado sobrevive a los reinicios o si cada arranque empieza de cero.
     storage: { file: STATE_FILE, loadedAtBoot: store.loaded },
@@ -1116,13 +1172,6 @@ wss.on('connection', (ws) => {
   const ping = setInterval(() => ws.readyState === 1 && ws.ping(), 30_000);
   ws.on('close', () => clearInterval(ping));
 });
-
-// El reset de las 9:00 se deduce al consultarlo (ver src/availability.js), pero
-// nadie consulta nada si no hay impresiones: sin este tic, quien tuviera la web
-// abierta veria la campana tachada hasta el siguiente aviso. Un minuto de
-// resolucion sobra para una hora en punto, y si el proceso estaba dormido el
-// reset se aplica igual en cuanto vuelve.
-setInterval(() => availability.state(), 60_000).unref?.();
 
 server.listen(PORT, () => {
   console.log(`Dashboard escuchando en http://localhost:${PORT}`);

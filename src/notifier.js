@@ -22,26 +22,36 @@ const HISTORY_MAX = 600;
 /**
  * Las dos categorias de avisos.
  *
- * `basic` es el minimo por el que uno tiene esto instalado: cuando la pieza se
- * esta enfriando, cuando ya se puede tocar, cuando la cama queda libre, y
- * cuando la maquina reporta un error. Todo lo demas es seguimiento, util pero prescindible, y va en `other`.
+ * No son "importantes" y "menos importantes": son DOS REGIMENES DISTINTOS.
  *
- * Cada categoria tiene su propio interruptor, que actua de llave maestra sobre
- * los avisos que contiene: apagar la categoria los calla todos sin perder que
- * tenia encendido cada uno, y volver a encenderla los devuelve como estaban.
+ * `basic` es el minimo por el que uno tiene esto instalado —cuando la pieza se
+ * esta enfriando, cuando ya se puede tocar, y cuando la maquina reporta un
+ * error—, y llega a TODOS los dispositivos siempre. No se elige por aparato:
+ * si la impresora esta dando errores, quien tenga la app se entera.
+ *
+ * `other` es seguimiento del trabajo. El panel de administracion decide cuales
+ * de estos avisos existen para todo el mundo, y a partir de ahi CADA
+ * DISPOSITIVO elige cuales quiere desde la campana de la pantalla principal
+ * (ver `prefs` en src/push.js). El panel pone el techo; el movil, su gusto.
+ *
+ * Cada categoria tiene ademas su propio interruptor, que actua de llave
+ * maestra sobre los avisos que contiene: apagar la categoria los calla todos
+ * sin perder que tenia encendido cada uno, y volver a encenderla los devuelve
+ * como estaban.
  */
 export const CATEGORIES = [
   {
     key: 'basic',
     label: 'Notificaciones básicas',
-    desc: 'Enfriamiento, pieza lista, cama vaciada y errores de la impresora.',
+    desc: 'Enfriamiento, pieza lista y errores. Las reciben todos los dispositivos, siempre.',
     // Encendida de fabrica: es el minimo por el que uno instala esto.
     defaultOn: true,
   },
   {
     key: 'other',
     label: 'Otras notificaciones',
-    desc: 'Seguimiento del trabajo: inicio, fin, pausas y progreso.',
+    desc: 'Seguimiento del trabajo. Aquí se decide cuáles existen; cada dispositivo elige '
+      + 'después las suyas desde la campana.',
     // Apagada de fabrica: es seguimiento, y encendido convierte una impresion
     // de seis horas en una docena de vibraciones.
     defaultOn: false,
@@ -70,12 +80,6 @@ export const TRIGGERS = [
     desc: 'Cuando la cama ya se ha enfriado y la pieza se puede sacar.',
   },
   {
-    key: 'collected',
-    category: 'basic',
-    label: 'Cama vaciada',
-    desc: 'Al confirmar «ya la he retirado»: la cama queda libre para el siguiente trabajo.',
-  },
-  {
     key: 'hms',
     category: 'basic',
     label: 'Errores de la impresora (HMS)',
@@ -92,6 +96,12 @@ export const TRIGGERS = [
     category: 'other',
     label: 'Impresión terminada',
     desc: 'Cuando la impresora acaba el trabajo.',
+  },
+  {
+    key: 'collected',
+    category: 'other',
+    label: 'Cama vaciada',
+    desc: 'Al confirmar «ya la he retirado»: la cama queda libre para el siguiente trabajo.',
   },
   {
     key: 'paused',
@@ -118,12 +128,34 @@ export const TRIGGERS = [
     desc: 'Cambio de filamento, atasco, filamento agotado…',
   },
   {
+    key: 'calibrated',
+    category: 'other',
+    label: 'Calibración terminada',
+    desc: 'Cuando la A1 acaba la rutina previa (cama, resonancia, extrusión) y empieza a imprimir.',
+  },
+  {
     key: 'progress',
     category: 'other',
     label: 'Hitos de progreso',
     desc: 'Avisos cada N % (solo si NOTIFY_PROGRESS_STEP no es 0).',
   },
 ];
+
+/**
+ * Etapas (`stg_cur`) que forman la rutina previa de la A1.
+ *
+ * Antes de la primera capa la maquina se pasa varios minutos nivelando la
+ * cama, midiendo resonancias y calibrando la extrusion. Durante ese rato el
+ * dashboard dice "Imprimiendo" y no lo esta: no hay nada que mirar todavia, y
+ * quien quiera vigilar la primera capa —que es cuando de verdad hay que estar
+ * delante— no tiene forma de saber cuando asomarse.
+ *
+ * Los codigos salen de STAGES en src/normalize.js: los de calibrar, escanear e
+ * identificar la cama. La inspeccion de primera capa (12) queda fuera a
+ * proposito: para entonces la impresion ya ha empezado, que es justo lo que el
+ * aviso anuncia.
+ */
+const CALIBRATION_STAGES = new Set([1, 2, 3, 4, 5, 6, 7, 8, 14, 16, 17, 19]);
 
 /** type -> categoria, resuelto una vez. */
 const CATEGORY_OF = new Map(TRIGGERS.map((t) => [t.key, t.category]));
@@ -147,9 +179,9 @@ const CATEGORY_OF = new Map(TRIGGERS.map((t) => [t.key, t.category]));
  *
  * Asi que el arranque en frio deja lo minimo por lo que uno tiene esto
  * instalado (enfriamiento, pieza lista, errores) y calla el seguimiento. Para
- * "ahora no quiero que suene" esta la campana de la pantalla principal, que es
- * la pregunta que de verdad se hace varias veces al dia y no sobrevive a los
- * reinicios por diseno: ver src/availability.js.
+ * "ahora no quiero que suene" esta el silencio de 24 o 48 h de la campana, que
+ * es la pregunta que de verdad se hace varias veces al dia, va por dispositivo
+ * y caduca sola: ver `mutedUntil` en src/push.js.
  *
  * Los interruptores individuales arrancan todos encendidos: asi encender una
  * categoria enciende de verdad lo que promete, en vez de dejar al usuario
@@ -184,7 +216,6 @@ export class Notifier extends EventEmitter {
    * @param {number} [opts.progressStep] notificar cada N% (0 = desactivado)
    * @param {import('./store.js').Store} [opts.store]
    * @param {import('./push.js').PushHub} [opts.push]
-   * @param {() => boolean} [opts.isAvailable] disponibilidad del usuario
    */
   constructor(opts = {}) {
     super();
@@ -195,10 +226,6 @@ export class Notifier extends EventEmitter {
     this.progressStep = Number(opts.progressStep ?? 0);
     this.store = opts.store || null;
     this.push = opts.push || null;
-    // Se inyecta como funcion y no como valor porque cambia sola: a las 9:00
-    // vuelve a "disponible" sin que nadie avise al notificador. Ver
-    // src/availability.js.
-    this.isAvailable = opts.isAvailable || (() => true);
 
     this.prev = null;
     this.seenHms = new Set();
@@ -248,21 +275,18 @@ export class Notifier extends EventEmitter {
   }
 
   /**
-   * Cuatro llaves en serie, de la mas general a la mas concreta: la
-   * disponibilidad del usuario, el interruptor maestro, el de la categoria a
-   * la que pertenece el aviso, y el suyo propio. Basta con que una este
-   * cerrada para que no salga nada.
+   * Tres llaves en serie, de la mas general a la mas concreta: el interruptor
+   * maestro, el de la categoria a la que pertenece el aviso, y el suyo propio.
+   * Basta con que una este cerrada para que no salga nada.
    *
-   * La disponibilidad va la primera y a proposito no toca los ajustes: es un
-   * "ahora no" que se deshace solo a las 9:00, no una reconfiguracion. Lo que
-   * pase mientras tanto sigue entrando en el historial, asi que al volver se
-   * ve todo lo que ocurrio.
+   * Esto decide si el aviso SE EMITE. Lo que cada movil quiere recibir de lo
+   * que se emite —y si esta silenciado ahora mismo— se filtra despues, por
+   * dispositivo, en src/push.js: son dos preguntas distintas y viven separadas.
    *
    * Un tipo que no este en el catalogo (uno nuevo que aun no tenga ficha) pasa
    * la parte de categoria: mejor que avise de mas a que se pierda en silencio.
    */
   allows(type) {
-    if (!this.isAvailable()) return false;
     const s = this.settings;
     if (!s.enabled) return false;
     const category = CATEGORY_OF.get(type);
@@ -335,6 +359,29 @@ export class Notifier extends EventEmitter {
       }
     }
 
+    // --- Fin de la calibracion previa ---
+    //
+    // Se dispara al SALIR del grupo de etapas de calibracion, no al entrar en
+    // una concreta: la rutina salta entre varias (nivelar, escanear, medir) y
+    // avisar en cada salto seria una docena de vibraciones por trabajo.
+    //
+    // Y solo con el trabajo vivo: una calibracion que acaba porque alguien ha
+    // cancelado no es "ya empieza a imprimir", es un trabajo que se fue al
+    // traste, y de eso avisa 'failed'.
+    if (
+      prev &&
+      prev.stageCode !== next.stageCode &&
+      CALIBRATION_STAGES.has(prev.stageCode) &&
+      !CALIBRATION_STAGES.has(next.stageCode) &&
+      next.printing
+    ) {
+      this.fire('calibrated', '🎯 Calibración terminada, empieza la impresión', {
+        printerName,
+        level: 'info',
+        ...(next.remainingText && { detail: `Quedan ${next.remainingText}` }),
+      });
+    }
+
     // --- Errores HMS nuevos ---
     //
     // El aviso lleva QUE pasa (texto oficial de Bambu) y QUE HACER, no el
@@ -386,9 +433,15 @@ export class Notifier extends EventEmitter {
    * Registra el evento y lo reparte. El historial se escribe siempre (es el
    * registro de lo que ha pasado, no un canal de aviso), pero el envio a
    * Telegram, webhooks y Web Push respeta los interruptores del panel.
+   *
+   * @param {object} [opts]
+   * @param {boolean} [opts.force] salta los interruptores. Solo para lo que
+   *   dispara una persona a mano desde el panel —el aviso de "va a haber una
+   *   actualizacion"—: si alguien lo pulsa, tiene que salir. El silencio de
+   *   cada dispositivo sigue mandando, eso se respeta en src/push.js.
    */
-  fire(type, text, meta = {}) {
-    const allowed = this.allows(type);
+  fire(type, text, meta = {}, { force = false } = {}) {
+    const allowed = force || this.allows(type);
     // `notify` viaja hasta el navegador: es lo que decide si ademas de entrar
     // en el historial el evento hace saltar un aviso en pantalla. Sin esto, un
     // tipo apagado desde el panel seguia avisando en las pestanas abiertas,
@@ -404,6 +457,20 @@ export class Notifier extends EventEmitter {
     if (!allowed) return event;
     this.send(text, { ...meta, type }).catch((err) => this.emit('error', err));
     return event;
+  }
+
+  /**
+   * El aviso que no nace de la impresora, sino de una persona.
+   *
+   * Cargar una version nueva reinicia la interfaz de todos los navegadores
+   * abiertos, y un movil que lleve dias con la pestana dormida se queda con
+   * una copia vieja que ya no entiende lo que le manda el servidor. Esto avisa
+   * antes: "abre la app". No pasa por los interruptores —lo esta pulsando
+   * alguien a proposito— pero si por el silencio de cada dispositivo, que es
+   * una decision de su dueno y no la pisa nadie.
+   */
+  announce(text, meta = {}) {
+    return this.fire('announce', text, { level: 'warning', ...meta }, { force: true });
   }
 
   _prune(list) {
@@ -471,12 +538,17 @@ export class Notifier extends EventEmitter {
     // canales de texto, pero no vibran el telefono.
     if (this.push?.enabled && !meta.silent) {
       jobs.push(
-        this.push.send({
-          title: meta.printerName || 'Bambu Lab',
-          body: short,
-          tag: meta.type || 'bambu',
-          url: '/',
-        }),
+        this.push.send(
+          {
+            title: meta.printerName || 'Bambustatus',
+            body: short,
+            tag: meta.type || 'bambu',
+            url: '/',
+          },
+          // El tipo y su categoria viajan hasta el reparto porque ahi vive el
+          // segundo filtro: el de lo que cada movil ha elegido recibir.
+          { type: meta.type || null, category: CATEGORY_OF.get(meta.type) || null },
+        ),
       );
     }
 

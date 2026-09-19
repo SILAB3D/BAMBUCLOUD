@@ -9,9 +9,18 @@
  * Requisitos: origen HTTPS y, en iOS, que la web este anadida a la pantalla de
  * inicio (Safari no permite push desde una pestana normal).
  *
- * Cada suscripcion se guarda como un "dispositivo" con nombre legible y un
- * interruptor propio: desde el panel de administracion se puede silenciar un
- * movil concreto sin tocar los avisos de los demas.
+ * Cada suscripcion se guarda como un "dispositivo" con nombre legible y dos
+ * capas de preferencias, que contestan a preguntas distintas y por eso no se
+ * mezclan:
+ *
+ *   enabled     lo pone el ADMINISTRADOR desde su panel. "Este aparato no
+ *               recibe nada." Es una decision sobre el parque de dispositivos.
+ *   prefs       lo pone el DUENO del movil desde la campana. "De las otras
+ *               notificaciones, yo quiero estas." Solo puede quitar, nunca
+ *               anadir: el panel decide primero que avisos existen.
+ *   mutedUntil  lo pone el dueno del movil desde la campana. "Ahora no, hasta
+ *               dentro de 24 o 48 h." Calla TODO, basicas incluidas, y caduca
+ *               solo, que es lo que lo hace seguro de usar.
  */
 
 import crypto from 'node:crypto';
@@ -81,6 +90,20 @@ export function describeDevice(ua = '', hints = {}) {
  * tardar. Diez minutos separan "aun puede llegar" de "aqui pasa algo".
  */
 const ACK_GRACE_MS = 10 * 60_000;
+
+/** Las unicas duraciones que admite el silencio de la campana, en horas. */
+export const MUTE_HOURS = [24, 48];
+
+/**
+ * Si este dispositivo esta callado ahora mismo.
+ *
+ * La marca es un instante futuro, no un contador: sobrevive a los reinicios
+ * del proceso sin temporizadores y no hay nada que rearmar al arrancar. Una
+ * marca pasada es simplemente un silencio que ya se ha cumplido.
+ */
+export function isMuted(sub, now = Date.now()) {
+  return Number(sub?.mutedUntil) > now;
+}
 
 /**
  * Que sabemos de la entrega en este dispositivo.
@@ -168,6 +191,10 @@ export class PushHub {
       ...s,
       id: s.id || deviceId(s.endpoint),
       enabled: s.enabled !== false,
+      // Sin preferencias guardadas el dispositivo sigue lo que diga el panel:
+      // un objeto vacio significa "lo que haya", no "nada".
+      prefs: s.prefs && typeof s.prefs === 'object' ? s.prefs : {},
+      mutedUntil: Number(s.mutedUntil) || null,
       label: s.label || describeDevice(s.ua, s),
     }));
   }
@@ -196,7 +223,12 @@ export class PushHub {
 
   /** Los que recibirian un aviso ahora mismo. */
   get activeCount() {
-    return this.subscriptions.filter((s) => s.enabled !== false).length;
+    return this.subscriptions.filter((s) => s.enabled !== false && !isMuted(s)).length;
+  }
+
+  /** Los que estan callados por decision de su dueno, no del panel. */
+  get mutedCount() {
+    return this.subscriptions.filter((s) => s.enabled !== false && isMuted(s)).length;
   }
 
   /** Lista para el panel: sin endpoint ni claves de cifrado. */
@@ -210,6 +242,11 @@ export class PushHub {
         lastSeen: s.lastSeen || s.at || null,
         standalone: Boolean(s.standalone),
         vendor: s.vendor || detectVendor(s.ua, s.model),
+        // Lo que ha elegido su dueno desde la campana. Viaja al panel de
+        // administracion para que no haya que adivinar por que un movil no
+        // recibe algo que esta encendido para todos.
+        prefs: { ...(s.prefs || {}) },
+        mutedUntil: isMuted(s) ? s.mutedUntil : null,
         // Las dos mitades de la unica pregunta que importa: se lo mandamos, y
         // llego? Ver `deliveryState`.
         lastSendAt: s.lastSendAt || null,
@@ -252,6 +289,11 @@ export class PushHub {
       at: prev?.at || Date.now(),
       lastSeen: Date.now(),
       enabled: prev ? prev.enabled !== false : true,
+      // Las preferencias son del aparato, no de la suscripcion: renovarla al
+      // abrir la app no puede devolverle avisos que su dueno quito, ni romper
+      // un silencio de 48 h a la primera visita.
+      prefs: { ...(prev?.prefs || {}) },
+      mutedUntil: prev?.mutedUntil || null,
       // Las marcas de entrega son del aparato, no de la suscripcion: renovarla
       // no puede borrar que lleva tres semanas sin confirmar un aviso.
       lastSendAt: prev?.lastSendAt || null,
@@ -291,6 +333,59 @@ export class PushHub {
     return { ok: true, id, enabled: target.enabled };
   }
 
+  /**
+   * Lo que este movil quiere recibir de "otras notificaciones".
+   *
+   * Solo se guardan las que su dueno ha QUITADO; lo que no aparece sigue lo
+   * que diga el panel. Asi, el dia que el administrador encienda un aviso
+   * nuevo llega a todo el mundo sin que nadie tenga que ir dispositivo por
+   * dispositivo a darle permiso.
+   *
+   * @param {string} id
+   * @param {Record<string, boolean>} patch
+   */
+  setPrefs(id, patch = {}) {
+    const list = this.subscriptions;
+    const target = list.find((s) => s.id === id);
+    if (!target) return { ok: false, error: 'Dispositivo no encontrado' };
+    const prefs = { ...(target.prefs || {}) };
+    for (const [key, value] of Object.entries(patch)) {
+      if (typeof value !== 'boolean') continue;
+      if (value) delete prefs[key];
+      else prefs[key] = false;
+    }
+    target.prefs = prefs;
+    this.subscriptions = list;
+    return { ok: true, id, prefs };
+  }
+
+  /**
+   * Silencio temporal, en horas. `0` lo levanta.
+   *
+   * Con tope: el sentido de esto es que caduque solo. Un silencio indefinido
+   * ya existe —el interruptor del panel— y tiene quien lo vigile.
+   *
+   * @param {string} id
+   * @param {number} hours
+   */
+  mute(id, hours) {
+    const list = this.subscriptions;
+    const target = list.find((s) => s.id === id);
+    if (!target) return { ok: false, error: 'Dispositivo no encontrado' };
+    const h = Number(hours);
+    if (h && !MUTE_HOURS.includes(h)) {
+      return { ok: false, error: `Solo se admite silenciar ${MUTE_HOURS.join(' o ')} horas` };
+    }
+    target.mutedUntil = h ? Date.now() + h * 3600_000 : null;
+    this.subscriptions = list;
+    console.log(
+      `[push] ${target.label} ${
+        target.mutedUntil ? `en silencio ${h} h` : 'ha vuelto a recibir avisos'
+      }`,
+    );
+    return { ok: true, id, mutedUntil: target.mutedUntil };
+  }
+
   /** Saca un dispositivo del registro. Volvera si su dueno abre la app. */
   remove(id) {
     const list = this.subscriptions;
@@ -307,17 +402,32 @@ export class PushHub {
    * Un 404/410 significa que esa suscripcion ya no existe (app desinstalada,
    * permisos revocados): se borra en vez de reintentarla eternamente.
    *
+   * Aqui vive el segundo filtro, el que mira dispositivo por dispositivo:
+   * quien esta en silencio no recibe NADA, y de las "otras notificaciones"
+   * cada uno recibe las que no haya quitado. Las basicas no se filtran: llegan
+   * a todo el que no este callado, que es lo que las hace basicas.
+   *
    * @param {object} payload
    * @param {object} [opts]
    * @param {string} [opts.only] id de un unico dispositivo (prueba del panel)
    * @param {boolean} [opts.ignoreEnabled] enviar aunque este silenciado
+   * @param {string|null} [opts.type] tipo de aviso, para las preferencias
+   * @param {string|null} [opts.category] su categoria ('basic' | 'other')
    */
-  async send(payload, { only = null, ignoreEnabled = false } = {}) {
+  async send(payload, { only = null, ignoreEnabled = false, type = null, category = null } = {}) {
     if (!this.enabled) return { sent: 0, removed: 0, skipped: 0 };
     const all = this.subscriptions;
+    const now = Date.now();
     const targets = all.filter((s) => {
       if (only && s.id !== only) return false;
-      return ignoreEnabled || s.enabled !== false;
+      // Una prueba dirigida a un aparato concreto se salta sus dos silencios:
+      // lo que se esta preguntando es si el canal funciona, y que siga callado
+      // ya lo dice la lista.
+      if (only) return true;
+      if (s.enabled === false && !ignoreEnabled) return false;
+      if (isMuted(s, now)) return false;
+      if (category === 'other' && type && s.prefs?.[type] === false) return false;
+      return true;
     });
     const skipped = (only ? all.filter((s) => s.id === only) : all).length - targets.length;
     if (!targets.length) return { sent: 0, removed: 0, skipped };
@@ -325,7 +435,6 @@ export class PushHub {
     const dead = [];
     const delivered = [];
     let sent = 0;
-    const now = Date.now();
 
     await Promise.all(
       targets.map(async (sub) => {

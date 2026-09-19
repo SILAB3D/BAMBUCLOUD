@@ -1,4 +1,4 @@
-# Bambu A1 Cloud Dashboard
+# Bambustatus
 
 Dashboard web para monitorizar una Bambu Lab A1 desde cualquier lugar, a través de Bambu Cloud.
 
@@ -14,9 +14,14 @@ Basado en el protocolo que implementa [PrintSphere](https://github.com/cptkirki/
 - **Ciclo completo de la impresión**: no acaba en «terminada». El panel de estado pasa por
   tres fases —**impresión → enfriamiento (15 min) → lista para retirar**— y avisa en cada
   salto. La fase de retirada se cierra con un botón «Ya la he retirado».
-- **Notificaciones push al móvil (Web Push)**: llegan con la PWA cerrada. Agrupadas en dos
-  categorías —básicas y otras— que se encienden en conjunto o una a una desde el panel de
-  administración. También por Telegram, Discord y webhook genérico.
+- **Notificaciones push al móvil (Web Push)**: llegan con la PWA cerrada. En dos niveles: el
+  panel de administración decide **qué avisos existen para todos**, y cada dispositivo elige
+  desde su campana **cuáles de las «otras» quiere** y si se calla 24 o 48 h. También por
+  Telegram, Discord y webhook genérico.
+- **Avisa cuando acaba la calibración**: la A1 se pasa varios minutos nivelando la cama,
+  midiendo resonancias y calibrando la extrusión antes de la primera capa. Durante ese rato el
+  panel dice «Imprimiendo» y no lo está. El aviso salta al salir de esa rutina, que es cuando
+  tiene sentido asomarse a mirar la primera capa.
 - **Errores traducidos, no códigos**: el catálogo oficial de Bambu Lab en español
   (2.015 códigos HMS y 490 de impresión) va incluido, así que el aviso dice qué pasa y qué
   hacer en vez de soltar `0700_2000_0002_0001`.
@@ -314,44 +319,74 @@ Pon el par en `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`. **No las cambies despué
 haces, todos los móviles ya suscritos dejan de recibir avisos sin previo aviso.
 
 Luego, en el dashboard: pulsa la **campana** para conceder el permiso en ese dispositivo. Se
-hace una vez por móvil.
+hace una vez por móvil. A partir de ahí la campana deja de pedir nada y pasa a ser el panel de
+avisos de ese dispositivo (abajo).
 
 > **En iPhone/iPad**, Safari solo permite push si la web está **añadida a la pantalla de
 > inicio**. Desde una pestaña normal el botón no hará nada. En Android funciona en ambos casos.
 
-### La campana: «estoy» / «no estoy»
+### Dos niveles: el panel decide, cada móvil recorta
 
-Una vez concedido el permiso, la campana deja de pedir nada y pasa a ser otra cosa: el
-interruptor de **disponibilidad**.
+Los avisos se deciden en dos sitios, y la diferencia entre ellos no es de importancia sino de
+**alcance**:
 
-| Campana | Significa | Qué pasa |
-| --- | --- | --- |
-| Verde | **Estoy disponible** | Llegan los avisos que estén activos en los ajustes |
-| Ámbar y tachada | **No estoy disponible** | No suena nada en ningún dispositivo |
+| | Dónde | Quién | Qué decide |
+|---|---|---|---|
+| **Panel de administración** | Engranaje → código | El administrador | Qué avisos existen **para todos** |
+| **Campana** | Icono de la campana | El dueño de cada móvil | Cuáles de las «otras» quiere **en ese móvil**, y si se calla |
 
-Es deliberadamente distinto de los interruptores del panel de administración, y la diferencia
-está en la pregunta que contesta cada uno. El panel contesta a *«de qué quiero enterarme»*: se
-toca una vez, es configuración, y por eso pide el código. La campana contesta a *«voy a estar
-delante para hacer algo con el aviso»*, que cambia varias veces al día — y por eso está a un
-toque en la pantalla principal, sin código.
+El panel pone el techo. La campana solo puede recortar por debajo: **nunca puede encender**
+un aviso que el panel no emite, y en la lista aparece marcado como *Desactivada* para que se
+vea por qué. Así, el día que el administrador encienda un tipo nuevo, llega a todo el mundo
+sin tener que ir dispositivo por dispositivo a darle permiso.
 
-**Y por eso vuelve sola.** Cada día **a las 9:00** (hora de `WAKE_TZ`) el servidor se pone en
-«estoy disponible» pase lo que pase. Silenciar la noche apagando categorías del panel obliga a
-acordarse de volver a encenderlas, y el día que uno no se acuerda la impresión termina sin que
-nadie se entere; aquí el olvido no se paga.
+**Las notificaciones básicas no se negocian.** Enfriamiento, pieza lista y errores de la
+impresora llegan a todos los dispositivos, siempre, y por eso no aparecen en la campana: un
+interruptor que no se puede apagar es peor que no ponerlo.
+
+### La campana: silenciar este dispositivo
+
+| Campana | Significa |
+| --- | --- |
+| Gris | Sin permiso de avisos en este dispositivo. Púlsala para concederlo |
+| Verde | Recibiendo avisos |
+| Ámbar y tachada | En silencio, con la hora de vuelta en el *title* |
+
+El silencio es **24 o 48 horas, y solo eso**. Calla *todo* en ese móvil, las básicas
+incluidas, y **caduca solo**: no hay forma de dejarlo silenciado sin querer, que es lo que lo
+hace seguro de pulsar a las dos de la madrugada. Un silencio indefinido ya existe —el
+interruptor por dispositivo del panel— y ese tiene quien lo vigile.
 
 Detalles que importan:
 
-- Es **global, no por dispositivo**. Para silenciar un móvil concreto y dejar el resto sonando
-  está el interruptor por dispositivo del panel.
-- **Lo que pasa mientras estás fuera sigue entrando en el panel de actividad.** Se corta el
-  aviso, no el registro: al volver está todo.
-- El reset **no es un temporizador**, es una deducción. Se guarda el último día en que ya se
-  aplicó y cada consulta comprueba si hoy toca, así que un proceso que estaba dormido a las
-  9:00 y arranca a las 11:00 aplica el reset en el primer vistazo. En el plan gratuito de
-  Render, donde el proceso se duerme y se reinicia solo, un `setTimeout` a las 9:00 no habría
-  sobrevivido a nada. Ver `src/availability.js`.
-- El **aviso de prueba** del panel ignora la disponibilidad: si es una prueba, tiene que sonar.
+- Es **por dispositivo**. Callar el móvil de la mesita no toca el del taller.
+- **Lo que pasa mientras tanto sigue entrando en el panel de actividad.** Se corta el aviso,
+  no el registro: al volver está todo.
+- La marca guardada es un **instante futuro**, no un contador, así que sobrevive a los
+  reinicios del proceso sin temporizadores que rearmar. Ver `mutedUntil` en `src/push.js`.
+- El **aviso de prueba** dirigido a un dispositivo concreto ignora su silencio: si es una
+  prueba, tiene que sonar. Lo que se está preguntando es si el canal funciona.
+- El **aviso de actualización** (abajo) sí lo respeta: lo ha decidido su dueño.
+
+> Antes de la v3.4 la campana era un interruptor global de disponibilidad que volvía solo a
+> las 9:00. Hacía la misma pregunta —«¿quiero que suene ahora?»— pero la contestaba para
+> todos los dispositivos a la vez. El silencio con plazo la contesta por aparato y con la
+> misma garantía de que se deshace solo, así que `src/availability.js` desapareció.
+
+### Avisar de una actualización
+
+En el panel de administración, sección **Actualizaciones**. Manda un push a todos los
+dispositivos diciendo que abran la app.
+
+Existe porque cargar una versión nueva **reinicia la interfaz de todos los navegadores
+abiertos**, quieran o no: el HTML lleva dentro su propio JavaScript y no hay forma de
+cambiarlo en caliente. Y un móvil con la PWA dormida desde hace días se queda además con una
+copia vieja que puede no entender lo que le manda el servidor — un síntoma (una pantalla que
+no se actualiza) que no se parece en nada a su causa.
+
+Salta los interruptores del panel, porque lo está pulsando una persona a propósito y es
+operativo, no seguimiento. Respeta el silencio de cada dispositivo, porque eso lo ha decidido
+su dueño; la nota bajo el botón dice cuántos estaban callados.
 
 ### Códigos de error traducidos
 
@@ -401,13 +436,13 @@ El desbloqueo dura una hora: la sesión del dashboard no caduca, pero el panel s
 
 - **Enviar notificaciones**: interruptor general de los avisos de la app.
 - **Dos categorías, cada una con su interruptor maestro**:
-  - **Notificaciones básicas** — la impresión se está enfriando, la impresión puede retirarse,
-    la cama ha quedado vacía y los errores de la impresora (HMS).
-  - **Otras notificaciones** — iniciada, terminada, en pausa, reanudada, fallida, atención
-    requerida e hitos de progreso.
-- **Un interruptor por tipo de aviso**, dentro de su categoría. Con la disponibilidad de la
-  campana son cuatro llaves en serie: estar disponible, el maestro, el de la categoría y el
-  del aviso; con que una esté cerrada, no sale nada. Apagar
+  - **Notificaciones básicas** — la impresión se está enfriando, la impresión puede retirarse
+    y los errores de la impresora (HMS). Llegan a **todos** los dispositivos, siempre.
+  - **Otras notificaciones** — iniciada, terminada, cama vaciada, en pausa, reanudada,
+    fallida, atención requerida, calibración terminada e hitos de progreso. De estas, cada
+    dispositivo se queda con las que quiera desde su campana.
+- **Un interruptor por tipo de aviso**, dentro de su categoría. Son tres llaves en serie —el
+  maestro, el de la categoría y el del aviso—, y con que una esté cerrada no sale nada. Apagar
   una categoría **no borra** lo que tenía cada aviso, así que volver a encenderla lo devuelve
   tal cual estaba.
 
@@ -424,20 +459,23 @@ El desbloqueo dura una hora: la sesión del dashboard no caduca, pero el panel s
   unos avisos recién silenciados. El efecto real fue el contrario y peor: un redespliegue de
   madrugada dejaba el dashboard mudo sin que nada lo indicara, y la primera señal era una
   impresión terminada de la que nadie se enteró. Silenciar es reversible mirando el panel; no
-  enterarse, no. Para el «ahora no quiero que suene» está la campana, que se deshace sola a
-  las 9:00.
+  enterarse, no. Para el «ahora no quiero que suene» está el silencio de 24 o 48 h de la
+  campana, que va por dispositivo y caduca solo.
 
   Los interruptores individuales arrancan todos encendidos, para que encender una categoría
   encienda de verdad lo que promete. Una vez tocas cualquier interruptor, tu elección manda
   mientras el estado sobreviva; con un disco persistente montado, para siempre.
 - **Enviar aviso de prueba**: suscribe este dispositivo si hacía falta y manda un push real.
   Si algo falla, se abre la ventana de diagnóstico con las causas probables.
+- **Avisar de una actualización**: push manual a todos los dispositivos pidiendo que abran la
+  app antes de que se cargue una versión nueva. Ver más arriba.
 - **Cerrar sesión** de Bambu Lab: corta el MQTT y borra el token guardado. Para reconectar
   hará falta el código que Bambu envía por email.
 
 Los cambios se aplican **en tiempo real y para todos los dispositivos**: el filtro vive en el
 servidor, en el momento de enviar, así que apagar un aviso aquí lo apaga en todos los móviles
-sin que ninguno tenga que abrir la app. Los paneles abiertos en otras pantallas se repintan
+sin que ninguno tenga que abrir la app. Lo que cada uno haya elegido en su campana se aplica
+en ese mismo punto, justo después. Los paneles abiertos en otras pantallas se repintan
 solos por WebSocket. Un aviso desactivado sigue registrándose en el panel de actividad; lo que
 se corta es el envío —y también el aviso en pantalla de las pestañas abiertas.
 
@@ -448,7 +486,8 @@ legible que el servidor deduce del user-agent (*Chrome · Android*, *Safari · i
 instalada)*) y cuándo se le vio por última vez. El que estás usando aparece marcado.
 
 - **Interruptor por dispositivo**: silencia ese móvil concreto sin tocar los demás ni los
-  tipos de aviso. Sigue suscrito, simplemente deja de recibir envíos.
+  tipos de aviso. Sigue suscrito, simplemente deja de recibir envíos. Es indefinido y solo se
+  levanta desde aquí — distinto del silencio con plazo de la campana, que lo pone su dueño.
 - **Aspa**: lo saca del registro. Volverá a aparecer solo si abre la app con el permiso dado.
 
 El interruptor **se conserva al renovar la suscripción**: un dispositivo silenciado no se
@@ -666,8 +705,8 @@ src/notifier.js          catálogo de avisos por categoría + transiciones + his
 src/error-codes.js       códigos HMS y print_error → descripción oficial + qué hacer
 src/progress.js          la décima del porcentaje, interpolada del tiempo restante
 src/wake.js              franja horaria de vigilia (y la cuenta de horas que implica)
-src/availability.js      "estoy" / "no estoy" de la campana, con vuelta automática a las 9:00
-src/push.js              Web Push (VAPID): alta, baja, acuse de recibo y purga de suscripciones
+src/push.js              Web Push (VAPID): alta, baja, preferencias y silencio por dispositivo,
+                         acuse de recibo y purga de suscripciones
 src/store.js             persistencia JSON de historial, ajustes, suscripciones y fase
 src/session-store.js     almacén de sesiones de express-session sobre el JSON
 src/keep-cookie.js       cookie firmada de 30 días: la sesión sobrevive sin disco
@@ -677,7 +716,7 @@ public/index.html        dashboard (sin build, un solo archivo)
 public/sw.js             Service Worker: caché del armazón + recepción de push
 public/manifest.webmanifest   manifiesto de la PWA
 agent/camera-agent.js    agente de cámara para la LAN
-tools/make-icons.mjs     genera favicon e iconos (figura de la marca)
+tools/make-icons.mjs     genera favicon e iconos (la marca: anillo + icosaedro)
 tools/fetch-error-codes.mjs   descarga el catálogo oficial de errores de Bambu Lab
 tools/fetch-wiki-error-codes.mjs   descarga la tabla de errores de la wiki de Bambu Lab
 data/bambu-errors.json   ese catálogo, versionado: 2.015 códigos HMS + 490 de impresión
@@ -687,18 +726,40 @@ data/bambu-wiki-errors.json   la tabla de la wiki: 259 códigos de error de impr
 
 ### Iconografía
 
-Toda la imagen de la app es el mismo icosaedro: favicon, iconos de la PWA,
-icono de notificación, pantalla de carga y el holograma que ocupa el hueco del
-proyecto. Los PNG y el `favicon.svg` se regeneran con:
+La marca es un **anillo de progreso abierto** —270 grados, con la cabeza encendida en el
+extremo— y dentro el **icosaedro macizo**, con sus diez caras visibles separadas por una
+holgura que deja ver la talla.
+
+Las dos mitades dicen las dos cosas que hace la app: el anillo, que esto vigila una impresión
+y sabe por dónde va (es el mismo anillo con cabeza del panel de estado, a otra escala); el
+icosaedro, que lo que se imprime es una pieza. Antes el icono era solo el icosaedro en
+alambre: decía «3D», pero no decía ni progreso ni aviso.
 
 ```bash
-node tools/make-icons.mjs
+node tools/make-icons.mjs              # los siete ficheros de public/
+node tools/make-icons.mjs --fragment   # además, el SVG animado para index.html
 ```
 
-El script no tiene dependencias (escribe el PNG a mano con `zlib`) y sale de
-la misma pose que usa el holograma animado en su primer fotograma, para que
-figura quieta y figura girando se reconozcan como la misma. Si tocas la pose o
-los colores, regenera y súbelo: los PNG están versionados.
+El script no tiene dependencias: escribe el PNG a mano con `zlib` y rasteriza con campos de
+distancia, así que el antialiasing sale de un `clamp` por píxel.
+
+Dos cosas que conviene no romper:
+
+- **A tamaño de favicon la figura se simplifica.** Por debajo de un radio de 11 px las diez
+  caras no caben y lo único que hacen es ensuciar la masa con medios tonos, así que
+  `markShapes` cae sola a la **silueta hexagonal**. El `favicon.svg` usa esa misma versión
+  porque vive en la pestaña, o sea a 16-20 px. El *badge* de la barra de estado, que Android
+  trata como máscara alfa a unos 24 px, se queda solo con el anillo.
+- **La marca animada de `public/index.html` no se teclea a mano.** Sale de
+  `--fragment`, en el mismo sistema de 64 unidades que usan los PNG; si la geometría cambia,
+  se vuelve a pedir el fragmento y se pega. Así no hay dos juegos de coordenadas que puedan
+  separarse con el tiempo.
+
+El icosaedro **en alambre** sigue existiendo, pero ya solo como holograma giratorio en el
+hueco de la portada del proyecto: ahí su trabajo es decir «un modelo 3D del que no tenemos
+imagen», y para eso un alambre girando es el dibujo correcto.
+
+Los PNG están versionados: si tocas la geometría o los colores, regenera y súbelos.
 
 ---
 
@@ -715,9 +776,11 @@ los colores, regenera y súbelo: los PNG están versionados.
 | POST | `/api/cycle/collected` | «Ya la he retirado»: cierra el ciclo |
 | GET | `/api/settings` | Ajustes de avisos, canales activos y estado de push |
 | PUT | `/api/settings` | Cambiar ajustes (requiere admin) |
-| GET | `/api/availability` | Disponibilidad actual y hora de vuelta |
-| POST | `/api/availability` | «Estoy» / «no estoy» (`{ available }`, sin admin) |
+| GET | `/api/device/:id` | Lo que la campana necesita: el aparato, las «otras» y sus preferencias |
+| PUT | `/api/device/:id/prefs` | Qué «otras» quiere este móvil (`{ prefs }`, sin admin) |
+| POST | `/api/device/:id/mute` | Silencio de este móvil (`{ hours: 24 | 48 | 0 }`, sin admin) |
 | POST | `/api/admin/unlock` | Desbloquear con el código (`{ code }`) |
+| POST | `/api/admin/announce` | «Abre la app, viene una actualización» (requiere admin) |
 | POST | `/api/admin/bambu-logout` | Cerrar sesión de Bambu Cloud (requiere admin) |
 | POST | `/api/admin/bambu-login` | Rehacer el login sin reiniciar (requiere admin) |
 | GET | `/api/push/key` | Clave pública VAPID |

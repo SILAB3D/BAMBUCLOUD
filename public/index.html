@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#080b10">
-<meta name="description" content="Estado en directo de la impresora Bambu Lab.">
+<meta name="description" content="Bambustatus: estado en directo de la impresora Bambu Lab.">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Bambu Status">
+<meta name="apple-mobile-web-app-title" content="Bambustatus">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="/manifest.webmanifest">
 <!-- El SVG manda en todo lo moderno; el PNG de 32 es el respaldo para los
@@ -16,7 +16,7 @@
 <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="icon" href="/icon-192.png" sizes="192x192" type="image/png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<title>Bambu Lab · Estado</title>
+<title>Bambustatus</title>
 <style>
 /* ==========================================================================
    Tokens
@@ -92,6 +92,59 @@ img{max-width:100%}
   background:radial-gradient(circle,rgba(62,201,255,.20),transparent 68%);
   animation:splash-pulse 2s ease-in-out infinite;
 }
+
+/* ==========================================================================
+   La marca
+   ==========================================================================
+   El mismo dibujo que los iconos de la PWA, en vectorial: un anillo de
+   progreso abierto con su cabeza encendida y, dentro, el icosaedro macizo con
+   sus diez caras visibles.
+
+   Los numeros NO se teclean aqui: los imprime `node tools/make-icons.mjs
+   --fragment`, en el mismo sistema de 64 unidades que usan los PNG. Si la
+   figura cambia, se vuelve a pedir el fragmento y se pega; asi no hay dos
+   juegos de coordenadas que puedan separarse con el tiempo.
+
+   Y se anima contandose a si misma: el anillo se dibuja mientras la cabeza lo
+   recorre y las caras van cayendo detras, de las traseras a las delanteras.
+   Es la pieza tallandose, que es literalmente lo que la app mira toda la
+   tarde.
+   ========================================================================== */
+.mark{width:100%;height:100%;display:block;overflow:visible}
+.mark .ring{
+  /* 99,2 es la longitud exacta del arco: 270 grados de radio 21,05. Es lo que
+     permite dibujarlo con stroke-dashoffset en vez de a ojo. */
+  --len:99.2;
+  fill:none;stroke:url(#g-holo);stroke-width:5.26;stroke-linecap:round;
+  filter:drop-shadow(0 0 5px rgba(62,201,255,.45));
+}
+.mark .face{fill:url(#g-holo);transform-box:fill-box;transform-origin:center}
+.mark .faces{filter:drop-shadow(0 0 4px rgba(62,201,255,.45))}
+.mark .head{fill:#a8f6ff;filter:drop-shadow(0 0 5px rgba(126,240,255,.9))}
+/* La cabeza nace arriba —donde arranca el anillo— y gira hasta su sitio. */
+.mark .head-g{transform-box:view-box;transform-origin:32px 32px}
+
+/* El anillo se dibuja mientras su cabeza lo recorre, y las caras van cayendo
+   detras, de las traseras a las delanteras: la figura se TALLA, no aparece.
+   El orden f1..f10 ya viene ordenado por profundidad desde el generador. */
+.mark.draw .ring{stroke-dasharray:var(--len);animation:mark-draw 1.15s var(--ease) both}
+.mark.draw .head-g{animation:mark-head 1.15s var(--ease) both}
+.mark.draw .face{animation:mark-face .4s var(--ease) both}
+.mark.draw .f1{animation-delay:.24s} .mark.draw .f2{animation-delay:.28s}
+.mark.draw .f3{animation-delay:.32s} .mark.draw .f4{animation-delay:.36s}
+.mark.draw .f5{animation-delay:.40s} .mark.draw .f6{animation-delay:.44s}
+.mark.draw .f7{animation-delay:.48s} .mark.draw .f8{animation-delay:.52s}
+.mark.draw .f9{animation-delay:.56s} .mark.draw .f10{animation-delay:.60s}
+
+@keyframes mark-draw{from{stroke-dashoffset:var(--len)}to{stroke-dashoffset:0}}
+@keyframes mark-head{from{transform:rotate(0deg)}to{transform:rotate(270deg)}}
+@keyframes mark-face{from{opacity:0;transform:scale(.55)}to{opacity:1;transform:none}}
+/* Sin movimiento: la figura ya terminada, que es su estado de reposo. */
+@media (prefers-reduced-motion:reduce){
+  .mark.draw .ring,.mark.draw .head-g,.mark.draw .face{animation:none}
+  .mark.draw .ring{stroke-dashoffset:0}
+  .mark.draw .head-g{transform:rotate(270deg)}
+}
 .splash-name{
   margin-top:22px;font-size:19px;font-weight:660;letter-spacing:-.015em;
   animation:fade-up .6s var(--ease) .12s both;
@@ -134,7 +187,7 @@ img{max-width:100%}
   animation:fade-up .55s var(--ease) both;
 }
 
-/* Emblema: el mismo icosaedro del icono y de la pantalla de carga. */
+/* Emblema: la misma marca del icono y de la pantalla de carga. */
 .gate-holo{width:88px;aspect-ratio:1;margin:0 auto 16px;position:relative}
 .gate-holo::before{
   content:"";position:absolute;inset:-12%;border-radius:50%;
@@ -229,11 +282,11 @@ button.primary:active{transform:scale(.98)}
 .icon-btn.spin svg{animation:spin .7s linear}
 
 /* Campana. Hace dos trabajos segun el permiso del navegador: si no esta
-   concedido, lo pide; si ya lo esta, es el interruptor de "estoy disponible" /
-   "no estoy disponible".
-   Tachada y ambar para el segundo estado, no roja: no es una averia, pero
-   tampoco es un sitio en el que uno quiera quedarse sin darse cuenta. El
-   selector lleva el id para ganarle a .icon-btn.active, que pinta de verde. */
+   concedido, lo pide; si ya lo esta, abre los avisos de este dispositivo.
+   Tachada y ambar mientras el movil esta en silencio, no roja: no es una
+   averia, pero tampoco es un sitio en el que uno quiera quedarse sin darse
+   cuenta. El selector lleva el id para ganarle a .icon-btn.active, que pinta
+   de verde. */
 #btn-notify .bell-off{display:none}
 #btn-notify.muted .bell-on{display:none}
 #btn-notify.muted .bell-off{display:block}
@@ -396,7 +449,8 @@ button.primary:active{transform:scale(.98)}
   width:clamp(44px,7vw,54px);aspect-ratio:1;flex:none;border-radius:var(--r-sm);object-fit:cover;
   background:var(--surface-2);border:1px solid var(--line);animation:fade-in .5s var(--ease) both;
 }
-/* Marcador cuando el trabajo no trae portada: un icosaedro en holograma.
+/* Marcador cuando el trabajo no trae portada: un icosaedro en holograma —un
+   modelo 3D del que no hay imagen, que es justo lo que falta ahi.
    La geometria se calcula en JS (ver drawHolo); aqui solo va el ambiente. */
 .cover-ph{
   display:grid;place-items:center;position:relative;overflow:hidden;
@@ -686,6 +740,36 @@ button.primary:active{transform:scale(.98)}
 .dev .kill:hover svg{stroke:#ff8f8f}
 
 /* --------------------------------------------------------------------------
+   Avisos de este dispositivo (la ventana de la campana)
+   --------------------------------------------------------------------------
+   Es la ventana que mas se abre de las tres, y casi siempre para lo mismo:
+   "callate hasta manana". Por eso el estado del silencio va arriba del todo y
+   en color: si el movil esta mudo, eso es lo primero que hay que leer, antes
+   que cualquier lista de interruptores.
+   -------------------------------------------------------------------------- */
+.mute-live{
+  padding:11px 13px;margin:0 0 12px;border-radius:var(--r-sm);
+  font-size:12.5px;line-height:1.5;
+  background:rgba(245,165,36,.10);border:1px solid rgba(245,165,36,.34);color:#f7c46c;
+}
+.mute-live b{font-weight:700;color:#ffd79a}
+/* Sin silencio activo la misma linea baja el tono: informa, no alerta. */
+.mute-live.calm{
+  background:rgba(0,212,146,.07);border-color:rgba(0,212,146,.26);color:var(--dim);
+}
+.mute-live.calm b{color:var(--accent)}
+
+/* Un aviso que el panel de administracion no emite para nadie. El interruptor
+   de aqui no puede encenderlo, y decirlo evita el "lo tengo puesto y no me
+   llega" de dentro de dos semanas. */
+.opt.blocked .txt b{color:var(--dim)}
+.opt .locked{
+  flex:none;font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;font-weight:700;
+  color:var(--faint);background:rgba(255,255,255,.05);border:1px solid var(--line);
+  border-radius:99px;padding:3px 8px;
+}
+
+/* --------------------------------------------------------------------------
    Diagnostico: por que no se han podido activar los avisos
    -------------------------------------------------------------------------- */
 .cause{
@@ -926,15 +1010,26 @@ button.primary:active{transform:scale(.98)}
 <!-- ======================= Pantalla de carga ============================== -->
 <div id="splash" class="splash">
   <div class="splash-holo">
-    <svg class="holo" viewBox="0 0 100 100" aria-hidden="true">
-      <g class="solid">
-        <g id="splash-edges"></g>
-        <g id="splash-verts"></g>
-      </g>
-      <rect class="scan" x="9" y="-14" width="82" height="14" fill="url(#g-scan)"/>
-    </svg>
+      <svg class="mark draw" viewBox="0 0 64 64" aria-hidden="true">
+        <path class="ring" d="M 32 10.95 A 21.05 21.05 0 1 1 10.95 32"/>
+        <g class="faces">
+          <polygon class="face f1" points="24.39,34.8 21.91,36.23 21.91,28.75"/>
+          <polygon class="face f2" points="25.77,37.19 23.29,38.62 29.77,42.36"/>
+          <polygon class="face f3" points="38.23,37.19 40.71,38.62 34.23,42.36"/>
+          <polygon class="face f4" points="39.61,34.8 42.09,36.23 42.09,28.75"/>
+          <polygon class="face f5" points="30.62,24 30.62,21.15 24.14,24.89"/>
+          <polygon class="face f6" points="33.38,24 33.38,21.15 39.86,24.89"/>
+          <polygon class="face f7" points="26.66,36.31 37.34,36.31 32,43.2"/>
+          <polygon class="face f8" points="25.6,34.46 30.93,25.22 22.3,26.4"/>
+          <polygon class="face f9" points="38.4,34.46 33.07,25.22 41.7,26.4"/>
+          <polygon class="face f10" points="26.35,35.26 37.65,35.26 32,25.48"/>
+        </g>
+        <!-- Nace donde arranca el anillo, arriba, y gira 270 grados hasta su
+             sitio: es la cabeza del arco recorriendo el progreso. -->
+        <g class="head-g"><circle class="head" cx="32" cy="10.95" r="3.55"/></g>
+      </svg>
   </div>
-  <div class="splash-name">Bambu Lab</div>
+  <div class="splash-name">Bambustatus</div>
   <div class="splash-sub">Estado de impresión</div>
   <div class="splash-bar"><i></i></div>
 </div>
@@ -943,15 +1038,26 @@ button.primary:active{transform:scale(.98)}
 <div id="gate" class="gate hidden">
   <div class="gate-card">
     <div class="gate-holo">
-      <svg class="holo" viewBox="0 0 100 100" aria-hidden="true">
-        <g class="solid">
-          <g id="gate-edges"></g>
-          <g id="gate-verts"></g>
+      <svg class="mark draw" viewBox="0 0 64 64" aria-hidden="true">
+        <path class="ring" d="M 32 10.95 A 21.05 21.05 0 1 1 10.95 32"/>
+        <g class="faces">
+          <polygon class="face f1" points="24.39,34.8 21.91,36.23 21.91,28.75"/>
+          <polygon class="face f2" points="25.77,37.19 23.29,38.62 29.77,42.36"/>
+          <polygon class="face f3" points="38.23,37.19 40.71,38.62 34.23,42.36"/>
+          <polygon class="face f4" points="39.61,34.8 42.09,36.23 42.09,28.75"/>
+          <polygon class="face f5" points="30.62,24 30.62,21.15 24.14,24.89"/>
+          <polygon class="face f6" points="33.38,24 33.38,21.15 39.86,24.89"/>
+          <polygon class="face f7" points="26.66,36.31 37.34,36.31 32,43.2"/>
+          <polygon class="face f8" points="25.6,34.46 30.93,25.22 22.3,26.4"/>
+          <polygon class="face f9" points="38.4,34.46 33.07,25.22 41.7,26.4"/>
+          <polygon class="face f10" points="26.35,35.26 37.65,35.26 32,25.48"/>
         </g>
-        <rect class="scan" x="9" y="-14" width="82" height="14" fill="url(#g-scan)"/>
+        <!-- Nace donde arranca el anillo, arriba, y gira 270 grados hasta su
+             sitio: es la cabeza del arco recorriendo el progreso. -->
+        <g class="head-g"><circle class="head" cx="32" cy="10.95" r="3.55"/></g>
       </svg>
     </div>
-    <h1>Bambu Lab</h1>
+    <h1>Bambustatus</h1>
     <p class="sub">Estado de impresión</p>
     <input id="gate-pass" type="password" placeholder="Contraseña"
            autocomplete="current-password">
@@ -1266,6 +1372,12 @@ button.primary:active{transform:scale(.98)}
         <!-- Un interruptor por tipo de aviso; se generan desde el servidor. -->
         <div id="trigger-list"></div>
 
+        <p class="note">
+          Esto es lo que reciben <b>todos los dispositivos</b> de forma predeterminada. Las
+          básicas llegan siempre; de «otras notificaciones», cada móvil puede quedarse con
+          las que quiera desde su campana.
+        </p>
+
         <p class="note" id="push-note"></p>
         <div class="btn-row" style="margin-top:11px">
           <button class="btn" id="btn-push-test">Enviar aviso de prueba</button>
@@ -1278,6 +1390,19 @@ button.primary:active{transform:scale(.98)}
         <h3>Dispositivos</h3>
         <div id="device-list"></div>
         <p class="note" id="device-note">Cargando…</p>
+      </div>
+
+      <!-- Aviso manual: lo unico del panel que no depende de la impresora. -->
+      <div class="section">
+        <h3>Actualizaciones</h3>
+        <p class="note" style="margin:0 0 11px">
+          Cargar una versión nueva reinicia la interfaz de todos los navegadores abiertos.
+          Avisa antes para que nadie se quede con una copia vieja sin enterarse.
+        </p>
+        <div class="btn-row">
+          <button class="btn" id="btn-announce">Avisar de una actualización</button>
+        </div>
+        <p class="note" id="announce-note"></p>
       </div>
 
       <div class="section">
@@ -1296,6 +1421,59 @@ button.primary:active{transform:scale(.98)}
       <div class="btn-row">
         <button class="btn" id="btn-dash-logout">Salir del dashboard</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= Avisos de ESTE dispositivo (campana) =================
+     Lo que se decide aqui solo afecta al movil desde el que se toca. El panel
+     de administracion pone el techo —que avisos existen para todo el mundo— y
+     esta ventana recorta por debajo. Las basicas no aparecen: llegan siempre,
+     y un interruptor que no se puede apagar es peor que ninguno.
+     ======================================================================= -->
+<div id="notif" class="modal hidden">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h2>Avisos en este dispositivo</h2>
+      <button class="close" id="notif-close" aria-label="Cerrar">
+        <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <!-- Sin permiso o sin suscripcion no hay nada que personalizar todavia:
+         la ventana se reduce a lo unico que se puede hacer. -->
+    <div id="notif-off">
+      <p class="cause-detail" id="notif-off-note"></p>
+      <div class="btn-row">
+        <button class="btn primary" id="notif-activate">Activar avisos</button>
+      </div>
+    </div>
+
+    <div id="notif-panel" class="hidden">
+      <p class="mute-live" id="notif-mute-state"></p>
+
+      <div class="section">
+        <h3>Silenciar este dispositivo</h3>
+        <div class="btn-row">
+          <button class="btn" data-mute="24">24 horas</button>
+          <button class="btn" data-mute="48">48 horas</button>
+        </div>
+        <div class="btn-row hidden" id="notif-unmute-row" style="margin-top:9px">
+          <button class="btn primary" id="notif-unmute">Volver a recibir avisos</button>
+        </div>
+        <p class="note">
+          Calla <b>todo</b> en este móvil, las notificaciones básicas incluidas. Se levanta
+          solo al cumplirse el plazo: no hay forma de dejarlo silenciado sin querer.
+        </p>
+      </div>
+
+      <div class="section">
+        <h3>Otras notificaciones</h3>
+        <div id="notif-list"></div>
+        <p class="note" id="notif-note"></p>
+      </div>
+
+      <p class="note" id="notif-basics" style="margin:0 2px"></p>
     </div>
   </div>
 </div>
@@ -1361,9 +1539,6 @@ let lastState = null;      // ultimo estado normalizado
 let lastCycle = null;      // fase del ciclo (impresion / enfriamiento / retirada)
 let pushConfig = { supported: false, publicKey: null, devices: 0 };
 let settings = null;
-// Disponibilidad del usuario: { available, since, resetHour, tz }. La manda el
-// servidor, que es quien manda de verdad — la campana solo la refleja.
-let availability = null;
 let triggerCatalog = [];   // tipos de aviso que ofrece el servidor
 let categoryCatalog = [];  // y las categorias en las que se agrupan
 let lastDevices = [];      // ultima lista de dispositivos suscritos pintada
@@ -1661,7 +1836,7 @@ function renderReady(cycle) {
  * Pinta el anillo grande. `text` sustituye al numero cuando la fase no se mide
  * en porcentaje (la retirada, por ejemplo).
  */
-const TAB_IDLE = 'Bambu Lab · Estado';
+const TAB_IDLE = 'Bambustatus';
 
 /**
  * Pestaña del navegador: porcentaje de la actividad en curso y la actividad.
@@ -1674,7 +1849,7 @@ const TAB_IDLE = 'Bambu Lab · Estado';
 function setTabTitle(pct, activity, decimals = false) {
   if (!activity) { document.title = TAB_IDLE; return; }
   document.title = pct == null
-    ? `${activity} · Bambu Lab`
+    ? `${activity} · Bambustatus`
     : `${decimals ? pct.toFixed(1) : Math.round(pct)}% · ${activity}`;
 }
 
@@ -1937,11 +2112,15 @@ function renderFilament(s) {
 // ===========================================================================
 // Holograma del proyecto
 //
-// Sustituye al icono fijo cuando el trabajo no trae portada. Es un icosaedro
-// de verdad: los 12 vertices y las 30 aristas salen de la definicion con la
-// razon aurea, y cada fotograma se rota y se proyecta. Las aristas de detras
-// se apagan segun su profundidad, que es lo que da la sensacion de volumen
-// en una figura tan pequena.
+// Ocupa el hueco de la portada cuando el trabajo no trae ninguna. Es un
+// icosaedro de verdad: los 12 vertices y las 30 aristas salen de la definicion
+// con la razon aurea, y cada fotograma se rota y se proyecta. Las aristas de
+// detras se apagan segun su profundidad, que es lo que da la sensacion de
+// volumen en una figura tan pequena.
+//
+// Ya NO es la marca —eso ahora es el anillo de progreso del favicon—, y no lo
+// echa de menos: aqui su trabajo es decir "un modelo 3D del que no tenemos
+// imagen", y para eso un alambre girando es exactamente el dibujo correcto.
 // ===========================================================================
 
 const HOLO = (() => {
@@ -1974,11 +2153,10 @@ const HOLO = (() => {
   }
 
   // ---- Pose canonica -----------------------------------------------------
-  // La figura se reorienta para que su posicion de reposo sea exactamente la
-  // del icono y el favicon: mirando de frente a una cara, que es la vista que
-  // da la silueta hexagonal en punta. Sin esto el holograma arrancaba en una
-  // pose cualquiera y no se reconocia como la misma figura de la marca.
-  // La misma rotacion la calcula tools/make-icons.mjs para los PNG.
+  // La figura se reorienta para arrancar mirando de frente a una cara, que es
+  // la vista que da la silueta hexagonal en punta. Sin esto el primer
+  // fotograma cae en una pose cualquiera y el hueco de la portada parece un
+  // garabato hasta que la rotacion lo endereza.
   const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
   const cross3 = (a, b) => [
     a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0],
@@ -2084,62 +2262,29 @@ function drawHolo(holo, t) {
 let coverHolo = null;
 let holoRaf = 0;
 
-// Emblema de la pantalla de acceso. El bucle se cancela solo en cuanto la
-// puerta se oculta, asi que entrar deja de gastar fotogramas sin que haya que
-// acordarse de pararlo desde el manejador del boton.
-let gateHolo = null;
-let gateRaf = 0;
-
-function startGateHolo() {
-  if (!gateHolo) gateHolo = makeHolo('gate-edges', 'gate-verts', { thickness: 0.85 });
-  drawHolo(gateHolo, 0);
-  if (REDUCED || gateRaf) return;
-  // Tiempo relativo al primer fotograma: asi el giro empieza en la pose
-  // canonica en vez de saltar a donde tocase segun el reloj de la pagina.
-  let t0 = 0;
-  const loop = (now) => {
-    if ($('gate').classList.contains('hidden')) { gateRaf = 0; return; }
-    gateRaf = requestAnimationFrame(loop);
-    if (document.visibilityState !== 'visible') return;
-    if (!t0) t0 = now;
-    drawHolo(gateHolo, now - t0);
-  };
-  gateRaf = requestAnimationFrame(loop);
-}
-
 // ---------------------------------------------------------------------------
 // Pantalla de carga
 //
 // Dura 1,5 s fijos. Mientras tanto la sesion y el WebSocket ya se estan
 // resolviendo por detras, asi que no retrasa nada: al desvanecerse el
 // dashboard suele estar ya con datos.
+//
+// La animacion de la marca es CSS y vive en el bloque ".mark" de la hoja de
+// estilos: el anillo se dibuja mientras su cabeza lo recorre y las capas
+// aparecen de abajo arriba. No hace falta JavaScript para eso, y el que habia
+// (el bucle del icosaedro) gastaba fotogramas justo en el arranque, que es
+// cuando el movil esta ocupado montando el resto de la pagina.
 // ---------------------------------------------------------------------------
 
 const SPLASH_MS = 1500;
 
 function runSplash() {
   const el = $('splash');
-  const holo = makeHolo('splash-edges', 'splash-verts', { thickness: 1.15 });
-  drawHolo(holo, 0);
-
-  let raf = 0;
-  if (!REDUCED) {
-    // Empieza quieto en la pose del icono y arranca a girar desde ahi: es el
-    // gesto de "la marca cobra vida", no una figura que ya venia rodando.
-    let t0 = 0;
-    const loop = (now) => {
-      if (!t0) t0 = now;
-      drawHolo(holo, (now - t0) * 1.9);
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-  }
-
   setTimeout(() => {
     el.classList.add('done');
     // Se quita del arbol al acabar el fundido: deja de animar y de robar
-    // eventos, y libera el bucle del holograma.
-    setTimeout(() => { cancelAnimationFrame(raf); el.remove(); }, 500);
+    // eventos.
+    setTimeout(() => el.remove(), 500);
   }, SPLASH_MS);
 }
 
@@ -2168,7 +2313,6 @@ function startHolo() {
 
 function showGate() {
   $('gate').classList.remove('hidden');
-  startGateHolo();
 }
 
 async function checkSession() {
@@ -2248,7 +2392,6 @@ function connectWs() {
       if (payload.printer) renderPrinter(payload.printer);
       lastCycle = payload.cycle || null;
       settings = payload.settings || null;
-      availability = payload.availability || null;
       // Si el numero es mas pequeno que el que teniamos, el servidor se ha
       // reiniciado: el cronometro vuelve a cero solo y eso es exactamente lo
       // que se quiere ver.
@@ -2267,8 +2410,12 @@ function connectWs() {
       paintSync();
       paintUptime();
       // La clave VAPID llega con el snapshot: buen momento para asegurar la
-      // suscripcion de un dispositivo que ya tenia el permiso concedido.
-      if (CAN_NOTIFY && Notification.permission === 'granted') ensurePush();
+      // suscripcion de un dispositivo que ya tenia el permiso concedido, y de
+      // paso traerse lo que este movil tiene elegido — que es lo que decide
+      // si un aviso llega a pintarse aqui.
+      if (CAN_NOTIFY && Notification.permission === 'granted') {
+        ensurePush().then((r) => (r.ok ? loadMyDevice() : null));
+      }
     }
     else if (type === 'state') { lastDataAt = Date.now(); renderState(payload); paintSync(); }
     else if (type === 'status') renderStatus(payload);
@@ -2279,14 +2426,21 @@ function connectWs() {
       renderOrb(lastState, lastCycle);
       renderStatusPanel();
     }
-    else if (type === 'settings') { settings = payload; paintSettings(); }
-    // Llega tanto al pulsar la campana en otra pantalla como sin que nadie
-    // toque nada: a las 9:00 el servidor vuelve a "disponible" el solo.
-    else if (type === 'availability') { availability = payload; syncNotifyButton(); }
+    else if (type === 'settings') {
+      settings = payload;
+      paintSettings();
+      // Un aviso que el panel acaba de apagar deja de poder tocarse aqui, y
+      // uno recien encendido aparece: la campana refleja el techo del panel.
+      paintNotifPanel();
+    }
     else if (type === 'devices') {
       pushConfig = { ...pushConfig, ...(payload.push || {}) };
-      // Solo con el panel delante: fuera de el la lista no se ve y pintarla
-      // seria trabajo para nadie.
+      // Silenciar este mismo movil desde el panel de otro tiene que verse aqui
+      // al momento, campana incluida.
+      const mine = (payload.devices || []).find((d) => d.id === myDeviceId);
+      if (mine) { myDevice = mine; syncNotifyButton(); paintNotifPanel(); }
+      // La lista completa solo con el panel delante: fuera de el no se ve y
+      // pintarla seria trabajo para nadie.
       if (adminPanelOpen()) renderDevices(payload.devices || []);
     }
     else if (type === 'bambu-logout') { lastState = null; lastDataAt = null; paintSync(); }
@@ -3032,91 +3186,260 @@ async function activateNotifications() {
   return r;
 }
 
-/** La hora a la que vuelve solo el "estoy disponible", como "9:00". */
-function resetLabel() {
-  return `${availability?.resetHour ?? 9}:00`;
+// ===========================================================================
+// La campana: los avisos de ESTE dispositivo
+//
+// Aqui no se configura la aplicacion, se configura el movil que uno tiene en
+// la mano. La diferencia con el panel de administracion no es de importancia,
+// es de alcance, y por eso son dos sitios distintos:
+//
+//   el panel   decide QUE AVISOS EXISTEN para todos. Es configuracion, se
+//              toca una vez, y por eso pide codigo.
+//   la campana decide CUALES DE ESOS quiere este aparato, y si ahora mismo
+//              quiere callarse del todo. Se toca a diario y no pide nada.
+//
+// Las notificaciones basicas no aparecen en la lista a proposito: llegan
+// siempre. Un interruptor que no se puede apagar es peor que no ponerlo.
+// ===========================================================================
+
+/**
+ * Id de la suscripcion push de este navegador. Lo da el alta, y es lo unico
+ * que convierte "un navegador cualquiera" en "este dispositivo": sin el no hay
+ * nada que personalizar ni que silenciar. Tambien lo usa el panel de
+ * administracion para senalar el aparato desde el que se esta mirando.
+ */
+let myDeviceId = null;
+/** Lo que el servidor sabe de este movil: sus preferencias y su silencio. */
+let myDevice = null;
+/** El catalogo de "otras notificaciones", lo unico personalizable. */
+let otherTriggers = [];
+
+/** Si este dispositivo esta callado ahora mismo. */
+function mutedHere() {
+  return Number(myDevice?.mutedUntil) > Date.now();
 }
 
-/** Si ahora mismo el usuario se ha declarado no disponible. */
-function isAway() {
-  return availability?.available === false;
+/** "las 21:40", "mañana a las 9:15", "el 3 de oct a las 8:00". */
+function untilText(at) {
+  const d = new Date(at);
+  const hhmm = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (dayKey(at) === dayKey(Date.now())) return `las ${hhmm}`;
+  if (dayKey(at) === dayKey(Date.now() + 86_400_000)) return `mañana a las ${hhmm}`;
+  return `el ${d.toLocaleDateString([], { day: 'numeric', month: 'short' })} a las ${hhmm}`;
+}
+
+/** Si el panel de administracion emite este aviso para alguien. */
+function serverEmits(key) {
+  if (!settings || settings.enabled === false) return false;
+  if (settings.groups?.other === false) return false;
+  return settings.triggers?.[key] !== false;
+}
+
+/**
+ * Si este aviso debe salir en pantalla en ESTE dispositivo.
+ *
+ * El servidor ya ha filtrado por sus interruptores antes de emitirlo (viene en
+ * `notify`), pero el silencio y las preferencias de este movil son suyas y no
+ * viajan en el evento: el envio al push si las mira, y el aviso de la pestana
+ * abierta tiene que mirarlas igual o se convertirian en dos cosas distintas.
+ */
+function deviceWants(e) {
+  if (mutedHere()) return false;
+  if (otherTriggers.some((t) => t.key === e.type) && myDevice?.prefs?.[e.type] === false) {
+    return false;
+  }
+  return true;
 }
 
 /**
  * La campana tiene dos vidas, y cual de las dos depende del permiso del
  * navegador.
  *
- * Sin permiso concedido no hay nada que silenciar, asi que el boton es lo que
- * siempre fue: el que lo pide. Concedido, la pregunta "quiero avisos?" ya esta
- * contestada y pasa a mandar la otra, la que cambia varias veces al dia:
- * "estoy disponible para atenderlos?".
+ * Sin permiso concedido no hay nada que ajustar, asi que el boton es lo que
+ * siempre fue: el que lo pide. Concedido, abre el panel de este dispositivo.
  *
- * Los dos estados se distinguen por color y no solo por el icono tachado:
- * verde disponible, ambar no disponible, gris apagado sin permiso.
+ * Los tres estados se distinguen por color y no solo por el icono tachado:
+ * verde recibiendo, ambar en silencio, gris apagado sin permiso.
  */
 function syncNotifyButton() {
   const btn = $('btn-notify');
   if (!CAN_NOTIFY) { btn.classList.add('hidden'); return; }
   const granted = Notification.permission === 'granted';
-  const away = granted && isAway();
+  const quiet = granted && mutedHere();
 
-  btn.classList.toggle('active', granted && !away);
-  btn.classList.toggle('muted', away);
+  btn.classList.toggle('active', granted && !quiet);
+  btn.classList.toggle('muted', quiet);
 
   btn.title = !granted
     ? Notification.permission === 'denied'
       ? 'Avisos bloqueados en los ajustes del navegador'
       : 'Activar avisos en este dispositivo'
-    : away
-      // La hora de vuelta va en el titulo a proposito: es lo que evita el
-      // "creia que los tenia puestos" de dentro de tres dias.
-      ? `No estoy disponible · sin avisos hasta las ${resetLabel()}`
-      : 'Estoy disponible · toca para no recibir avisos hasta mañana';
+    // La hora de vuelta va en el titulo a proposito: es lo que evita el
+    // "creia que los tenia puestos" de pasado manana.
+    : quiet
+      ? `En silencio hasta ${untilText(Number(myDevice.mutedUntil))}`
+      : 'Avisos de este dispositivo';
   btn.setAttribute('aria-label', btn.title);
 }
 
-/**
- * Cambia la disponibilidad en el servidor.
- *
- * No se pinta nada por adelantado: la lleva el servidor porque tiene que valer
- * para todos los dispositivos a la vez y porque el reset de las 9:00 es suyo.
- * El repintado llega por WebSocket, y con el la confirmacion de que de verdad
- * ha quedado guardado.
- */
-async function setAvailability(available) {
-  const btn = $('btn-notify');
-  btn.disabled = true;
-  try {
-    const r = await fetch('/api/availability', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ available }),
-    });
-    const j = await r.json();
-    if (!r.ok) throw new Error(j.error || 'No se pudo cambiar');
-    availability = j.availability;
-    syncNotifyButton();
-    toast(
-      available
-        ? 'Estás disponible: los avisos vuelven a sonar'
-        : `Sin avisos hasta las ${resetLabel()}`,
-      available ? 'ok' : '',
-    );
-  } catch (err) {
-    toast(err.message || 'No se pudo cambiar la disponibilidad', 'err');
-  } finally {
-    btn.disabled = false;
-  }
+/** Trae del servidor el estado de este dispositivo y repinta lo que dependa. */
+async function loadMyDevice() {
+  if (!myDeviceId) return null;
+  const res = await fetch(`/api/device/${encodeURIComponent(myDeviceId)}`).catch(() => null);
+  if (!res?.ok) return null;
+  const view = await res.json().catch(() => null);
+  if (view) applyDeviceView(view);
+  return view;
 }
 
-$('btn-notify').onclick = async () => {
-  if (Notification.permission !== 'granted') {
-    const r = await activateNotifications();
-    if (r.ok) toast('Avisos activados en este dispositivo', 'ok');
+function applyDeviceView(view) {
+  myDevice = view.device || null;
+  otherTriggers = view.triggers || otherTriggers;
+  // Los ajustes generales vienen con la respuesta porque son justo lo que
+  // decide si un interruptor de aqui puede tocarse: sin ellos habria que
+  // pedirlos aparte o dibujar la lista a ciegas.
+  if (view.settings) settings = view.settings;
+  syncNotifyButton();
+  paintNotifPanel();
+}
+
+async function openNotifPanel() {
+  $('notif').classList.remove('hidden');
+  paintNotifPanel();
+  if (CAN_NOTIFY && Notification.permission === 'granted') {
+    // El alta es idempotente y devuelve el id de este aparato: es lo que
+    // convierte "un navegador cualquiera" en "este dispositivo".
+    const r = await ensurePush();
+    if (r.ok) await loadMyDevice();
+  }
+  paintNotifPanel();
+}
+
+function paintNotifPanel() {
+  const off = $('notif-off');
+  const panel = $('notif-panel');
+  if (!off) return;
+
+  if (!myDevice) {
+    off.classList.remove('hidden');
+    panel.classList.add('hidden');
+    $('notif-off-note').textContent = !CAN_NOTIFY
+      ? 'Este navegador no admite avisos, así que no hay nada que ajustar aquí.'
+      : Notification.permission === 'denied'
+        ? 'Los avisos están bloqueados en los ajustes del navegador para esta web. Hay que '
+          + 'desbloquearlos ahí antes de poder elegir cuáles recibir.'
+        : IS_IOS && !IS_STANDALONE
+          ? 'En iPhone y iPad los avisos solo funcionan con la app añadida a la pantalla de '
+            + 'inicio y abierta desde ese icono, no desde una pestaña de Safari.'
+          : 'Este dispositivo todavía no recibe avisos. Actívalos y podrás elegir cuáles.';
     return;
   }
-  await setAvailability(isAway());
+
+  off.classList.add('hidden');
+  panel.classList.remove('hidden');
+
+  // --- Silencio -----------------------------------------------------------
+  const live = $('notif-mute-state');
+  if (mutedHere()) {
+    live.className = 'mute-live';
+    live.innerHTML = `En silencio hasta <b>${escapeHtml(untilText(Number(myDevice.mutedUntil)))}</b>. `
+      + 'No llegará nada a este dispositivo, ni siquiera las básicas.';
+    $('notif-unmute-row').classList.remove('hidden');
+  } else {
+    live.className = 'mute-live calm';
+    live.innerHTML = myDevice.enabled
+      ? 'Este dispositivo <b>está recibiendo avisos</b>.'
+      : 'Silenciado desde el <b>panel de administración</b>. Solo se puede reactivar desde ahí.';
+    $('notif-unmute-row').classList.add('hidden');
+  }
+
+  // --- Otras notificaciones ------------------------------------------------
+  const box = $('notif-list');
+  if (!otherTriggers.length) {
+    box.innerHTML = '';
+    $('notif-note').textContent = 'No hay ninguna configurada en el servidor.';
+    return;
+  }
+
+  box.innerHTML = otherTriggers
+    .map((t) => {
+      const emits = serverEmits(t.key);
+      const on = emits && myDevice.prefs?.[t.key] !== false;
+      return `<div class="opt${emits ? '' : ' blocked'}">
+        <div class="txt">
+          <b>${escapeHtml(t.label)}</b>
+          <small>${escapeHtml(t.desc || '')}</small>
+        </div>
+        ${emits
+          ? `<button class="sw" data-pref="${escapeAttr(t.key)}" role="switch"
+                     aria-checked="${on ? 'true' : 'false'}"
+                     aria-label="${escapeAttr(t.label)}"></button>`
+          : '<span class="locked">Desactivada</span>'}
+      </div>`;
+    })
+    .join('');
+
+  const blocked = otherTriggers.filter((t) => !serverEmits(t.key)).length;
+  $('notif-note').textContent = blocked
+    ? `${blocked} de estas no las envía el servidor a nadie: eso se decide en el panel de `
+      + 'administración y desde aquí no se puede encender.'
+    : 'Quita las que no quieras en este móvil. En los demás seguirán llegando.';
+
+  box.querySelectorAll('[data-pref]').forEach((el) => {
+    el.onclick = () =>
+      saveDevicePrefs({ [el.dataset.pref]: el.getAttribute('aria-checked') !== 'true' });
+  });
+
+  $('notif-basics').textContent =
+    'Las notificaciones básicas —enfriamiento, pieza lista y errores de la impresora— llegan '
+    + 'siempre a todos los dispositivos. Para callarlas, usa el silencio de arriba.';
+}
+
+async function saveDevicePrefs(patch) {
+  if (!myDevice) return;
+  const res = await fetch(`/api/device/${encodeURIComponent(myDevice.id)}/prefs`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prefs: patch }),
+  });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) { toast(j.error || 'No se pudo guardar', 'err'); return; }
+  applyDeviceView(j);
+}
+
+/** @param {number} hours 24, 48, o 0 para levantar el silencio. */
+async function setMute(hours) {
+  if (!myDevice) return;
+  const res = await fetch(`/api/device/${encodeURIComponent(myDevice.id)}/mute`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ hours }),
+  });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) { toast(j.error || 'No se pudo cambiar', 'err'); return; }
+  applyDeviceView(j);
+  toast(
+    hours
+      ? `Sin avisos en este dispositivo hasta ${untilText(Number(myDevice.mutedUntil))}`
+      : 'Los avisos vuelven a este dispositivo',
+    hours ? '' : 'ok',
+  );
+}
+
+$('btn-notify').onclick = openNotifPanel;
+$('notif-close').onclick = () => $('notif').classList.add('hidden');
+$('notif').onclick = (e) => { if (e.target === $('notif')) $('notif').classList.add('hidden'); };
+$('notif-activate').onclick = async () => {
+  const r = await activateNotifications();
+  if (!r.ok) return;                    // la ventana de diagnostico ya lo explica
+  await loadMyDevice();
+  paintNotifPanel();
+  toast('Avisos activados en este dispositivo', 'ok');
 };
+$('notif-unmute').onclick = () => setMute(0);
+document.querySelectorAll('[data-mute]').forEach((el) => {
+  el.onclick = () => setMute(Number(el.dataset.mute));
+});
 
 /** Aviso en pantalla cuando la pestana esta abierta. */
 function notifyBrowser(e) {
@@ -3124,6 +3447,10 @@ function notifyBrowser(e) {
   // El servidor decide que tipos avisan; aqui solo se obedece. Los eventos
   // antiguos del historial no traen la marca, pero tampoco pasan por aqui.
   if (e.notify === false) return;
+  // Y lo que haya elegido este dispositivo manda por encima: si no, el movil
+  // silenciado seguiria avisando en la pestana abierta, que es justo lo que el
+  // silencio dice que no debe pasar.
+  if (!deviceWants(e)) return;
   if (document.visibilityState === 'visible') return; // ya lo esta viendo
   // Con Service Worker el aviso lo muestra el, para que el clic reenfoque la
   // PWA en vez de abrir una pestana suelta.
@@ -3133,11 +3460,11 @@ function notifyBrowser(e) {
     .filter(Boolean)
     .join('\n');
   if (swReg) {
-    swReg.showNotification('Bambu Lab', {
-      body, tag: e.type, icon: '/icon-192.png', badge: '/badge-96.png',
+    swReg.showNotification('Bambustatus', {
+      body, tag: e.type, icon: '/notify-icon.png', badge: '/badge-96.png',
     });
   } else {
-    new Notification('Bambu Lab', { body, tag: e.type });
+    new Notification('Bambustatus', { body, tag: e.type });
   }
 }
 
@@ -3413,7 +3740,6 @@ async function showAdminPanel() {
   try {
     const r = await fetch('/api/settings').then((x) => x.json());
     settings = r.settings;
-    if (r.availability) { availability = r.availability; syncNotifyButton(); }
     triggerCatalog = r.triggers || triggerCatalog;
     categoryCatalog = r.categories || categoryCatalog;
     pushConfig = r.push || pushConfig;
@@ -3544,9 +3870,6 @@ function setSwitch(el, on) {
 // la app. El servidor avisa por WebSocket, y por eso la lista se repinta sola
 // en todos los paneles abiertos.
 // ---------------------------------------------------------------------------
-
-/** Id de esta suscripcion, para senalarla en la lista. Lo da el alta. */
-let myDeviceId = null;
 
 function renderDevices(devices) {
   const box = $('device-list');
@@ -3782,6 +4105,34 @@ async function waitForAcks(sentAt, only, timeoutMs = 12_000) {
     pending: devices.filter((d) => (d.lastAckAt || 0) < sentAt),
   };
 }
+
+/**
+ * Aviso de "va a haber una actualizacion".
+ *
+ * Se confirma antes porque llega a todos los moviles a la vez y es el unico
+ * boton del panel que hace vibrar telefonos ajenos sin que haya pasado nada en
+ * la impresora.
+ */
+$('btn-announce').onclick = async () => {
+  const btn = $('btn-announce');
+  if (!confirm('Se avisará a todos los dispositivos de que abran la app porque viene una '
+      + 'actualización. ¿Enviar?')) return;
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/admin/announce', { method: 'POST' });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) { toast(j.error || 'No se pudo enviar', 'err'); return; }
+    toast(`Aviso enviado a ${j.sent} dispositivo(s)`, 'ok');
+    // El recuento de callados va en la nota y no en el toast: no es un error,
+    // pero es exactamente lo que explica que alguien no se entere.
+    $('announce-note').textContent = j.muted
+      ? `Enviado a ${j.sent} de ${j.devices}. ${j.muted} está(n) en silencio desde su propia `
+        + 'campana y no lo recibirán hasta que se les pase el plazo.'
+      : `Enviado a ${j.sent} dispositivo(s).`;
+  } finally {
+    btn.disabled = false;
+  }
+};
 
 $('btn-bambu-logout').onclick = async () => {
   if (!confirm('¿Cerrar la sesión de Bambu Lab? Habrá que volver a verificar con el código del email.')) return;

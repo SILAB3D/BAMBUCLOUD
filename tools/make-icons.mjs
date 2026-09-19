@@ -1,16 +1,23 @@
 /**
- * Generador de la iconografia de la app.
+ * Generador de la iconografia de Bambustatus.
  *
- * Todos los iconos son el mismo icosaedro en la misma pose: visto de frente
- * contra una cara, que es la vista que da la silueta hexagonal simetrica del
- * dado de veinte. Es la pose "de retrato" de la marca; el holograma de la
- * interfaz gira, pero arranca justo aqui para que se reconozca que son la
- * misma figura.
+ * LA MARCA
+ * --------
+ * Un anillo de progreso abierto —270 grados, arranca arriba y gira como las
+ * agujas del reloj— con su cabeza encendida en el extremo, y dentro el
+ * icosaedro de siempre, ahora macizo: sus diez caras visibles, cada una con
+ * una holgura que deja ver la talla.
+ *
+ * Las dos mitades dicen las dos cosas que hace la app. El anillo, que esto
+ * vigila una impresion y sabe por donde va —es el mismo anillo con cabeza del
+ * panel de estado, a otra escala—. El icosaedro, que lo que se imprime es una
+ * pieza. Antes el icono era solo el icosaedro en alambre: bonito, pero decia
+ * "3D" y no decia ni progreso ni aviso.
  *
  *   node tools/make-icons.mjs
  *
  * Sin dependencias: el PNG se escribe a mano (zlib va en Node) porque la
- * alternativa era arrastrar canvas/sharp solo para regenerar seis ficheros
+ * alternativa era arrastrar canvas/sharp solo para regenerar siete ficheros
  * que casi nunca cambian.
  */
 
@@ -21,12 +28,46 @@ import { fileURLToPath } from 'node:url';
 
 const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
 
+const TAU = Math.PI * 2;
+const lerp = (a, b, t) => a + (b - a) * t;
+const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+
 /* ==========================================================================
-   Geometria
+   El icosaedro
+   ==========================================================================
+   Los 12 vertices salen de la definicion con la razon aurea y las 20 caras de
+   buscar los trios de vertices mutuamente adyacentes: mas fiable que teclear
+   sesenta indices a mano, y ademas deja la figura lista para cualquier pose.
    ========================================================================== */
 
-/** Los 12 vertices normalizados y las 30 aristas del icosaedro. */
-function icosahedron() {
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross = (a, b) => [
+  a[1] * b[2] - a[2] * b[1],
+  a[2] * b[0] - a[0] * b[2],
+  a[0] * b[1] - a[1] * b[0],
+];
+const unit = (v) => {
+  const m = Math.hypot(v[0], v[1], v[2]);
+  return [v[0] / m, v[1] / m, v[2] / m];
+};
+
+/**
+ * Caras visibles del icosaedro en su pose canonica, proyectadas y
+ * normalizadas al radio 1.
+ *
+ * POSE CANONICA: la camara atraviesa el centro de una cara y la figura se gira
+ * sobre ese eje hasta dejar un vertice justo arriba. Es la vista que da la
+ * silueta hexagonal en punta —la del dado de veinte en una foto de catalogo— y
+ * la unica en la que la figura se reconoce de un vistazo.
+ *
+ * VISIBLES: en un solido convexo basta con la z del centro de cada cara, que
+ * en un poliedro regular centrado en el origen apunta igual que su normal.
+ * Son exactamente diez, la mitad de las veinte.
+ *
+ * Salen ordenadas de atras adelante para que, si algun dia se pintan con
+ * distinta intensidad, el orden de dibujado ya sea el correcto.
+ */
+function icosahedronFaces() {
   const PHI = (1 + Math.sqrt(5)) / 2;
   const raw = [];
   for (const a of [-1, 1]) {
@@ -34,122 +75,184 @@ function icosahedron() {
       raw.push([0, a, b * PHI], [a, b * PHI, 0], [b * PHI, 0, a]);
     }
   }
-  const r = Math.hypot(1, PHI);
-  const verts = raw.map((v) => v.map((c) => c / r));
+  const norm = Math.hypot(1, PHI);
+  const verts = raw.map((v) => v.map((c) => c / norm));
 
-  // Aristas = los pares que estan a la distancia minima. Mas fiable que
-  // teclear treinta parejas de indices a mano.
   const d2 = (i, j) =>
     (verts[i][0] - verts[j][0]) ** 2 +
     (verts[i][1] - verts[j][1]) ** 2 +
     (verts[i][2] - verts[j][2]) ** 2;
   let min = Infinity;
   for (let i = 0; i < 12; i++) for (let j = i + 1; j < 12; j++) min = Math.min(min, d2(i, j));
+  const adjacent = (i, j) => d2(i, j) < min * 1.05;
 
-  const edges = [];
-  for (let i = 0; i < 12; i++) {
-    for (let j = i + 1; j < 12; j++) if (d2(i, j) < min * 1.05) edges.push([i, j]);
-  }
-  return { verts, edges, adjacent: (i, j) => d2(i, j) < min * 1.05 };
-}
-
-const ICO = icosahedron();
-
-const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-const norm = (v) => {
-  const m = Math.hypot(v[0], v[1], v[2]);
-  return [v[0] / m, v[1] / m, v[2] / m];
-};
-const cross = (a, b) => [
-  a[1] * b[2] - a[2] * b[1],
-  a[2] * b[0] - a[0] * b[2],
-  a[0] * b[1] - a[1] * b[0],
-];
-
-/**
- * Pose canonica: el eje de la camara atraviesa el centro de una cara y la
- * figura se gira sobre ese eje hasta dejar un vertice arriba del todo, para
- * que el hexagono quede en punta y no tumbado.
- */
-function canonicalPose() {
-  // Una cara cualquiera: el primer trio de vertices mutuamente adyacentes.
-  let face = null;
-  outer: for (let i = 0; i < 12; i++) {
-    for (let j = i + 1; j < 12; j++) {
-      if (!ICO.adjacent(i, j)) continue;
-      for (let k = j + 1; k < 12; k++) {
-        if (ICO.adjacent(i, k) && ICO.adjacent(j, k)) { face = [i, j, k]; break outer; }
-      }
-    }
-  }
-  const axis = norm(face.reduce(
-    (s, i) => [s[0] + ICO.verts[i][0], s[1] + ICO.verts[i][1], s[2] + ICO.verts[i][2]],
-    [0, 0, 0],
-  ));
-
-  // Base ortonormal con `axis` como profundidad.
-  const seed = Math.abs(axis[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
-  let u = norm(cross(seed, axis));
-  let w = cross(axis, u);
-
-  const flatPose = ICO.verts.map((v) => ({ x: dot(v, u), y: -dot(v, w), z: dot(v, axis) }));
-
-  // Giro en el plano hasta dejar un vertice de la silueta justo arriba: el
-  // hexagono en punta, como en la referencia. Se aplica en 2D y no sobre la
-  // base porque asi el signo del angulo es el que se ve, sin sorpresas.
-  const top = flatPose.reduce((a, b) => (b.y < a.y ? b : a));
-  const theta = Math.atan2(top.x, -top.y);
-  const c = Math.cos(-theta), s = Math.sin(-theta);
-  return flatPose.map((p) => ({
-    x: p.x * c - p.y * s,
-    y: p.x * s + p.y * c,
-    z: p.z,
-  }));
-}
-
-const POSE = canonicalPose();
-
-/**
- * Aristas visibles: las que tocan al menos una cara orientada hacia la camara.
- *
- * Es la ocultacion de lineas de toda la vida, que en un solido convexo se
- * resuelve solo mirando la normal de cada cara. Sin esto se dibujan las
- * treinta aristas, las de detras se cruzan con las de delante y lo que sale es
- * una maraña en estrella, no el dado de la referencia.
- */
-const VISIBLE_EDGES = (() => {
-  // Las 20 caras: cada trio de vertices mutuamente adyacentes.
   const faces = [];
   for (let i = 0; i < 12; i++) {
     for (let j = i + 1; j < 12; j++) {
-      if (!ICO.adjacent(i, j)) continue;
+      if (!adjacent(i, j)) continue;
       for (let k = j + 1; k < 12; k++) {
-        if (ICO.adjacent(i, k) && ICO.adjacent(j, k)) faces.push([i, j, k]);
+        if (adjacent(i, k) && adjacent(j, k)) faces.push([i, j, k]);
       }
     }
   }
-  // En un poliedro regular centrado en el origen, la normal de una cara apunta
-  // igual que su centro, asi que basta con la z del centroide.
-  const towardCamera = faces.filter(
-    (f) => (POSE[f[0]].z + POSE[f[1]].z + POSE[f[2]].z) / 3 > 1e-9,
-  );
 
-  const seen = new Set();
-  for (const [a, b, c] of towardCamera) {
-    for (const [p, q] of [[a, b], [b, c], [a, c]]) {
-      seen.add(p < q ? `${p},${q}` : `${q},${p}`);
+  // Base ortonormal con el eje de una cara como profundidad.
+  const axis = unit(
+    faces[0].reduce(
+      (s, i) => [s[0] + verts[i][0], s[1] + verts[i][1], s[2] + verts[i][2]],
+      [0, 0, 0],
+    ),
+  );
+  const seed = Math.abs(axis[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+  const u = unit(cross(seed, axis));
+  const w = cross(axis, u);
+  const flat = verts.map((v) => [dot(v, u), -dot(v, w), dot(v, axis)]);
+
+  // Giro en el plano hasta dejar un vertice de la silueta justo arriba. Se
+  // aplica en 2D y no sobre la base porque asi el signo del angulo es el que
+  // se ve, sin sorpresas.
+  const top = flat.reduce((a, b) => (b[1] < a[1] ? b : a));
+  const th = -Math.atan2(top[0], -top[1]);
+  const ct = Math.cos(th);
+  const st = Math.sin(th);
+  const P = flat.map(([x, y, z]) => [x * ct - y * st, x * st + y * ct, z]);
+
+  const visible = faces
+    .map((f) => ({ f, z: (P[f[0]][2] + P[f[1]][2] + P[f[2]][2]) / 3 }))
+    .filter((o) => o.z > 1e-9)
+    .sort((a, b) => a.z - b.z);
+
+  // Normalizado al radio de la silueta para que `r` en MARK signifique
+  // siempre lo mismo: la mitad del ancho que ocupa la figura.
+  const rMax = Math.max(...visible.flatMap((o) => o.f.map((i) => Math.hypot(P[i][0], P[i][1]))));
+  return visible.map((o) => o.f.map((i) => [P[i][0] / rMax, P[i][1] / rMax]));
+}
+
+const ICO = icosahedronFaces();
+
+/** Los seis vertices de la silueta, en orden angular. */
+const ICO_HULL = (() => {
+  const pts = [];
+  for (const f of ICO) {
+    for (const p of f) {
+      if (!pts.some((q) => Math.hypot(q[0] - p[0], q[1] - p[1]) < 1e-4)) pts.push(p);
     }
   }
-  return ICO.edges.filter(([a, b]) => seen.has(`${a},${b}`));
+  return pts
+    .filter((p) => Math.hypot(p[0], p[1]) > 0.999)
+    .sort((a, b) => Math.atan2(a[1], a[0]) - Math.atan2(b[1], b[0]));
 })();
+
+/**
+ * Encoge un poligono hacia su centro dejando una holgura uniforme.
+ *
+ * Se escala hacia el centroide, y el factor se calcula con la distancia del
+ * centroide a su lado mas cercano: asi la holgura que queda es la pedida y no
+ * una proporcion que se abre en las caras grandes y se cierra en las
+ * pequenas. Los PNG y el SVG usan el mismo resultado, que es lo que garantiza
+ * que sean el mismo dibujo y no dos parecidos.
+ */
+function shrink(pts, gap) {
+  const c = pts.reduce((s, p) => [s[0] + p[0] / pts.length, s[1] + p[1] / pts.length], [0, 0]);
+  let inradius = Infinity;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i];
+    const b = pts[(i + 1) % pts.length];
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    const d = Math.abs((b[0] - a[0]) * (a[1] - c[1]) - (a[0] - c[0]) * (b[1] - a[1])) / len;
+    inradius = Math.min(inradius, d);
+  }
+  const k = Math.max(0.05, 1 - gap / inradius);
+  return pts.map((p) => [c[0] + (p[0] - c[0]) * k, c[1] + (p[1] - c[1]) * k]);
+}
+
+/* ==========================================================================
+   La marca, en coordenadas normalizadas
+   ==========================================================================
+   Todo en fracciones del lienzo (0..1, centro en 0.5) para que la misma
+   definicion sirva a 32 px y a 512 sin numeros magicos por tamano.
+
+   Los angulos van en convencion de pantalla (y hacia abajo): -90 grados son
+   las 12 en punto y crecer es girar en el sentido de las agujas del reloj.
+   ========================================================================== */
+
+const MARK = {
+  ring: { r: 0.328, w: 0.082, a0: -Math.PI / 2, sweep: Math.PI * 1.5 },
+  // La cabeza del arco, en el extremo: el mismo punto encendido que lleva el
+  // anillo del panel de estado. Es lo que convierte un aro roto en "esto se
+  // esta moviendo".
+  head: 0.055,
+  // Radio de la figura de dentro (mitad de su ancho).
+  figure: 0.191,
+  // La holgura entre caras, en fraccion del radio de la figura: asi la talla
+  // se ve igual a 192 px que a 512 y que en el SVG, que no sabe a que tamano
+  // acabara. Con un minimo en pixeles porque por debajo de un pixel y pico la
+  // separacion deja de leerse como tal y lo unico que hace es ensuciar la masa
+  // con medios tonos.
+  gapK: 0.043,
+  gapMinPx: 1.2,
+  // Por debajo de este radio en pixeles, diez triangulos ya no caben: se pinta
+  // la silueta hexagonal y se acabo. Es la simplificacion de toda la vida para
+  // los tamanos de favicon, y no se pierde nada porque a 16 px de la pestana
+  // las caras no se veian de todos modos.
+  minFacetPx: 11,
+};
+
+/**
+ * Los trazos de la marca a un tamano concreto.
+ *
+ * @param {number} size   lado del lienzo en px
+ * @param {number} scale  fraccion del lienzo que ocupa el anillo (diametro)
+ * @param {object} [opts]
+ * @param {number} [opts.boost] engorda el trazo del anillo, para los tamanos
+ *   diminutos donde uno fino se evapora
+ * @param {boolean} [opts.figure] incluir la figura de dentro
+ */
+function markShapes(size, scale, { boost = 1, figure = true } = {}) {
+  // `scale` es el diametro exterior deseado; la definicion mide 2*(r + w/2).
+  const k = (size * scale) / (2 * (MARK.ring.r + MARK.ring.w / 2));
+  const c = size / 2;
+  const at = (v) => v * k;
+
+  const ringHw = Math.max(0.55, at(MARK.ring.w) * boost) / 2;
+
+  const shapes = [
+    {
+      kind: 'arc',
+      cx: c, cy: c,
+      r: at(MARK.ring.r),
+      a0: MARK.ring.a0,
+      sweep: MARK.ring.sweep,
+      hw: ringHw,
+    },
+    {
+      kind: 'disc',
+      cx: c + at(MARK.ring.r) * Math.cos(MARK.ring.a0 + MARK.ring.sweep),
+      cy: c + at(MARK.ring.r) * Math.sin(MARK.ring.a0 + MARK.ring.sweep),
+      r: Math.max(ringHw * 1.35, at(MARK.head) * boost),
+    },
+  ];
+
+  if (figure) {
+    const R = at(MARK.figure);
+    const place = (pts) => pts.map(([x, y]) => [c + x * R, c + y * R]);
+    if (R >= MARK.minFacetPx) {
+      const gap = Math.max(MARK.gapMinPx, R * MARK.gapK);
+      for (const f of ICO) shapes.push({ kind: 'poly', pts: shrink(place(f), gap) });
+    } else {
+      // Un pelo de holgura contra el anillo, para que no se toquen.
+      shapes.push({ kind: 'poly', pts: shrink(place(ICO_HULL), 0.4) });
+    }
+  }
+  return shapes;
+}
 
 /* ==========================================================================
    Rasterizado
    ==========================================================================
-   Campo de distancias en vez de supermuestreo: para capsulas (aristas) y
-   discos (vertices) la distancia exacta se calcula en cerrado, asi que el
-   antialiasing sale de un solo `clamp` por pixel y ademas queda el mismo
-   campo listo para el resplandor.
+   Campo de distancias en vez de supermuestreo: para discos, arcos de extremo
+   redondeado y poligonos la distancia exacta se calcula en cerrado, asi que el
+   antialiasing sale de un solo `clamp` por pixel.
    ========================================================================== */
 
 function segDist(px, py, ax, ay, bx, by) {
@@ -162,26 +265,47 @@ function segDist(px, py, ax, ay, bx, by) {
 }
 
 /**
- * Distancia con signo al conjunto de trazos de una capa.
- * Devuelve un Float32Array del tamano del lienzo.
+ * Distancia a un arco de extremos redondeados.
+ *
+ * Dentro del barrido es la distancia a la circunferencia; fuera, la del
+ * extremo mas cercano — que es justo lo que redondea las puntas sin tener que
+ * dibujarlas aparte.
  */
-function distanceField(size, shapes) {
-  const f = new Float32Array(size * size);
-  for (let y = 0; y < size; y++) {
-    const py = y + 0.5;
-    for (let x = 0; x < size; x++) {
-      const px = x + 0.5;
-      let d = Infinity;
-      for (const s of shapes) {
-        const dd = s.r2 === undefined
-          ? segDist(px, py, s.x1, s.y1, s.x2, s.y2) - s.hw
-          : Math.hypot(px - s.cx, py - s.cy) - s.r2;
-        if (dd < d) d = dd;
-      }
-      f[y * size + x] = d;
+function arcDist(px, py, s) {
+  const dx = px - s.cx, dy = py - s.cy;
+  let delta = (Math.atan2(dy, dx) - s.a0) % TAU;
+  if (delta < 0) delta += TAU;
+  if (delta <= s.sweep) return Math.abs(Math.hypot(dx, dy) - s.r) - s.hw;
+
+  const ends = [s.a0, s.a0 + s.sweep].map((a) => [
+    s.cx + s.r * Math.cos(a),
+    s.cy + s.r * Math.sin(a),
+  ]);
+  return Math.min(...ends.map(([ex, ey]) => Math.hypot(px - ex, py - ey))) - s.hw;
+}
+
+/** Distancia con signo a un poligono: negativa dentro. */
+function polyDist(px, py, s) {
+  let d = Infinity;
+  let inside = false;
+  const P = s.pts;
+  for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
+    const a = P[i], b = P[j];
+    d = Math.min(d, segDist(px, py, a[0], a[1], b[0], b[1]));
+    if (
+      (a[1] > py) !== (b[1] > py) &&
+      px < ((b[0] - a[0]) * (py - a[1])) / (b[1] - a[1]) + a[0]
+    ) {
+      inside = !inside;
     }
   }
-  return f;
+  return inside ? -d : d;
+}
+
+function shapeDist(px, py, s) {
+  if (s.kind === 'arc') return arcDist(px, py, s);
+  if (s.kind === 'disc') return Math.hypot(px - s.cx, py - s.cy) - s.r;
+  return polyDist(px, py, s);
 }
 
 /** Lienzo RGBA con premultiplicado manual al componer. */
@@ -202,39 +326,30 @@ function composite(cv, i, r, g, b, a) {
   p[i + 3] = oa;
 }
 
-const lerp = (a, b, t) => a + (b - a) * t;
-const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
-
 /**
- * Dibuja una capa de la figura.
+ * Dibuja el conjunto de trazos en una sola pasada.
  * @param tint  funcion (yNorm) -> [r,g,b] en 0..1, el degradado vertical
- * @param glow  intensidad del halo (0 lo desactiva)
  */
-function paintLayer(cv, shapes, { tint, opacity = 1, glow = 0, glowRadius = 1 }) {
-  const { size, px } = cv;
-  const field = distanceField(size, shapes);
+function paintShapes(cv, shapes, tint) {
+  const { size } = cv;
   for (let y = 0; y < size; y++) {
-    const t = y / (size - 1);
-    const [r, g, b] = tint(t);
+    const py = y + 0.5;
+    const [r, g, b] = tint(y / (size - 1));
     for (let x = 0; x < size; x++) {
-      const idx = y * size + x;
-      const d = field[idx];
-      const i = idx * 4;
-
-      if (glow > 0) {
-        const dd = d > 0 ? d : 0;
-        const ga = glow * Math.exp(-(dd * dd) / (2 * glowRadius * glowRadius));
-        composite(cv, i, r, g, b, ga * opacity);
+      const px = x + 0.5;
+      let d = Infinity;
+      for (const s of shapes) {
+        const dd = shapeDist(px, py, s);
+        if (dd < d) d = dd;
       }
-      const a = clamp01(0.5 - d) * opacity;
-      if (a > 0) composite(cv, i, r, g, b, a);
+      const a = clamp01(0.5 - d);
+      if (a > 0) composite(cv, (y * size + x) * 4, r, g, b, a);
     }
   }
-  return px;
 }
 
 /* ==========================================================================
-   Composicion de la figura
+   Composicion
    ========================================================================== */
 
 const HOLO_TOP = [0x7e / 255, 0xf0 / 255, 0xff / 255]; // cian claro
@@ -244,82 +359,22 @@ const gradient = (t) => [
   lerp(HOLO_TOP[1], HOLO_BOT[1], t),
   lerp(HOLO_TOP[2], HOLO_BOT[2], t),
 ];
-const flat = (rgb) => () => rgb;
 
-/**
- * Los trazos de la figura, todos iguales.
- *
- * Sin puntos en los vertices y sin halo: es un dibujo de lineas, como la
- * referencia. La version con profundidad y resplandor se probo antes y a 32 px
- * —que es donde de verdad vive un favicon— se emborronaba hasta parecer una
- * mancha; el trazo plano y uniforme aguanta el tamano pequeno.
- */
-function figureShapes(size, radius, stroke) {
-  const cx = size / 2, cy = size / 2;
-  const P = POSE.map((v) => ({ x: cx + v.x * radius, y: cy + v.y * radius }));
-  return VISIBLE_EDGES.map(([a, b]) => ({
-    x1: P[a].x, y1: P[a].y, x2: P[b].x, y2: P[b].y, hw: stroke / 2,
-  }));
+function paintMark(cv, opts = {}) {
+  const { scale = 0.74, tint = gradient, ...rest } = opts;
+  paintShapes(cv, markShapes(cv.size, scale, rest), tint);
 }
 
 /**
- * @param opts.scale   fraccion del lienzo que ocupa la figura (diametro)
- * @param opts.tint    degradado vertical o color plano
- * @param opts.strokeK grosor del trazo, en fraccion del lienzo
- */
-function paintFigure(cv, opts = {}) {
-  const { scale = 0.72, tint = gradient, strokeK = 0.026 } = opts;
-  const size = cv.size;
-  const radius = (size * scale) / 2;
-  const stroke = Math.max(1.1, size * strokeK);
-
-  paintLayer(cv, figureShapes(size, radius, stroke), { tint });
-}
-
-/**
- * Version maciza para el badge de la barra de estado.
+ * Version para el badge de la barra de estado.
  *
- * Ahi el icono acaba en 24 px reales: un alambre de treinta lineas se
- * convierte en una mancha gris. Se queda la silueta hexagonal rellena con el
- * hueco de la cara frontal, que a ese tamano todavia se distingue.
+ * Ahi el icono acaba en unos 24 px reales y el sistema lo trata como mascara:
+ * ignora el color y pinta solo lo que marque el canal alfa. El icosaedro a ese
+ * tamano es una mancha, asi que se queda el anillo con su cabeza —la silueta
+ * que de verdad se reconoce— en blanco liso.
  */
-function paintSilhouette(cv, { scale = 0.9 } = {}) {
-  const { size } = cv;
-  const c = size / 2;
-  const radius = (size * scale) / 2;
-  const P = POSE.map((v) => ({ x: c + v.x * radius, y: c + v.y * radius, z: v.z }));
-
-  // La silueta son los 6 vertices mas alejados del centro; la cara frontal,
-  // los 3 mas cercanos a la camara.
-  const byR = [...P].sort((a, b) => Math.hypot(b.x - c, b.y - c) - Math.hypot(a.x - c, a.y - c));
-  const hull = byR.slice(0, 6).sort((a, b) => Math.atan2(a.y - c, a.x - c) - Math.atan2(b.y - c, b.x - c));
-  const face = [...P].sort((a, b) => b.z - a.z).slice(0, 3)
-    .sort((a, b) => Math.atan2(a.y - c, a.x - c) - Math.atan2(b.y - c, b.x - c));
-
-  const inside = (poly, px, py) => {
-    let hit = false;
-    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-      const a = poly[i], b = poly[j];
-      if ((a.y > py) !== (b.y > py) &&
-          px < ((b.x - a.x) * (py - a.y)) / (b.y - a.y) + a.x) hit = !hit;
-    }
-    return hit;
-  };
-
-  const SS = 4; // supermuestreo: el borde recto de un poligono no tiene SDF facil
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      let hits = 0;
-      for (let sy = 0; sy < SS; sy++) {
-        for (let sx = 0; sx < SS; sx++) {
-          const px = x + (sx + 0.5) / SS;
-          const py = y + (sy + 0.5) / SS;
-          if (inside(hull, px, py) && !inside(face, px, py)) hits++;
-        }
-      }
-      if (hits) composite(cv, (y * size + x) * 4, 1, 1, 1, hits / (SS * SS));
-    }
-  }
+function paintBadge(cv, { scale = 0.94 } = {}) {
+  paintShapes(cv, markShapes(cv.size, scale, { boost: 1.45, figure: false }), () => [1, 1, 1]);
 }
 
 /* ==========================================================================
@@ -329,9 +384,8 @@ function paintSilhouette(cv, { scale = 0.9 } = {}) {
 /**
  * Cuadrado de esquinas redondeadas, oscuro y liso.
  *
- * Solo un degradado muy leve para que no parezca un recorte de cartulina. El
- * halo de color que habia antes competia con la figura justo al tamano en que
- * la figura ya se ve mal.
+ * Solo un degradado muy leve para que no parezca un recorte de cartulina: el
+ * color lo pone la figura.
  */
 function paintPlate(cv, { rounding = 0.22 } = {}) {
   const { size } = cv;
@@ -394,11 +448,10 @@ function encodePng(cv) {
     raw[o++] = 0;
     for (let x = 0; x < size; x++) {
       const i = (y * size + x) * 4;
-      const a = clamp01(px[i + 3]);
       raw[o++] = Math.round(clamp01(px[i])     * 255);
       raw[o++] = Math.round(clamp01(px[i + 1]) * 255);
       raw[o++] = Math.round(clamp01(px[i + 2]) * 255);
-      raw[o++] = Math.round(a * 255);
+      raw[o++] = Math.round(clamp01(px[i + 3]) * 255);
     }
   }
   const ihdr = Buffer.alloc(13);
@@ -421,41 +474,80 @@ function write(name, cv) {
 }
 
 /* ==========================================================================
-   SVG (favicon)
+   SVG
    ========================================================================== */
 
+const f2 = (n) => Number(n.toFixed(2));
+const polyPoints = (pts) => pts.map(([x, y]) => `${f2(x)},${f2(y)}`).join(' ');
+
 /**
- * @param plate false = fondo transparente (version de notificacion)
+ * La marca en vectorial, sobre un lienzo de 64.
+ *
+ * @param {object} [opts]
+ * @param {boolean} [opts.plate]  placa oscura de fondo
+ * @param {boolean} [opts.facets] caras talladas, o silueta lisa
+ * @param {boolean} [opts.animate] clases y grupos para la animacion de la app
  */
-function faviconSvg({ plate = true, scale = 0.72, stroke = 1.9 } = {}) {
-  const S = 64, R = (S * scale) / 2, c = S / 2;
-  const P = POSE.map((v) => ({ x: c + v.x * R, y: c + v.y * R }));
-  const f = (n) => n.toFixed(2);
+function markSvg({ plate = true, facets = false, animate = false, scale = 0.74 } = {}) {
+  const S = 64;
+  // Se pide el dibujo al mismo sitio que los PNG: un solo juego de numeros.
+  const shapes = markShapes(S, scale, { figure: false });
+  const arc = shapes.find((s) => s.kind === 'arc');
+  const head = shapes.find((s) => s.kind === 'disc');
 
-  const edges = VISIBLE_EDGES
-    .map(([a, b]) => `<line x1="${f(P[a].x)}" y1="${f(P[a].y)}" x2="${f(P[b].x)}" y2="${f(P[b].y)}"/>`)
-    .join('');
+  // `markShapes` decide facetas o silueta por el tamano en pixeles; aqui manda
+  // el destino, asi que la figura se rehace con la variante pedida.
+  const R = ((S * scale) / (2 * (MARK.ring.r + MARK.ring.w / 2))) * MARK.figure;
+  const place = (pts) => pts.map(([x, y]) => [S / 2 + x * R, S / 2 + y * R]);
+  const figure = facets
+    ? ICO.map(
+        (fc, i) =>
+          `<polygon class="face f${i + 1}" points="${polyPoints(shrink(place(fc), R * MARK.gapK))}"/>`,
+      ).join('')
+    : `<polygon class="face" points="${polyPoints(shrink(place(ICO_HULL), R * 0.033))}"/>`;
 
-  const bg = plate
-    ? `<rect width="${S}" height="${S}" rx="${S * 0.22}" fill="url(#p)"/>`
-    : '';
+  const pt = (a) => [f2(arc.cx + arc.r * Math.cos(a)), f2(arc.cy + arc.r * Math.sin(a))];
+  const [sx, sy] = pt(arc.a0);
+  const [ex, ey] = pt(arc.a0 + arc.sweep);
+  // El barrido es de 270 grados: arco mayor (1) y sentido horario (1).
+  const ring =
+    `<path class="ring" d="M ${sx} ${sy} A ${f2(arc.r)} ${f2(arc.r)} 0 1 1 ${ex} ${ey}"/>`;
+
+  // En la app la cabeza nace arriba —donde arranca el anillo— y gira hasta su
+  // sitio; en el favicon ya esta puesta.
+  const headEl = animate
+    ? `<g class="head-g"><circle class="head" cx="${f2(arc.cx)}" cy="${f2(arc.cy - arc.r)}" r="${f2(head.r)}"/></g>`
+    : `<circle class="head" cx="${f2(head.cx)}" cy="${f2(head.cy)}" r="${f2(head.r)}"/>`;
+
+  if (animate) {
+    return `<svg class="mark draw" viewBox="0 0 ${S} ${S}" aria-hidden="true">
+  ${ring}
+  <g class="faces">${figure.replace(/></g, '>\n    <')}</g>
+  ${headEl}
+</svg>`;
+  }
+
+  const bg = plate ? `<rect width="${S}" height="${S}" rx="${S * 0.22}" fill="url(#p)"/>` : '';
   const plateDef = plate
-    ? `<linearGradient id="p" x1="0" y1="0" x2="0" y2="1">
+    ? `
+  <linearGradient id="p" x1="0" y1="0" x2="0" y2="1">
     <stop offset="0" stop-color="#141c27"/><stop offset="1" stop-color="#080b10"/>
   </linearGradient>`
     : '';
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${S} ${S}">
-<!-- Generado por tools/make-icons.mjs. No editar a mano. -->
+<!-- Bambustatus. Generado por tools/make-icons.mjs. No editar a mano. -->
 <defs>
   <linearGradient id="e" x1="0" y1="0" x2="0" y2="1">
     <stop offset="0" stop-color="#7ef0ff"/><stop offset="1" stop-color="#00d492"/>
-  </linearGradient>
-  ${plateDef}
+  </linearGradient>${plateDef}
 </defs>
 ${bg}
-<g fill="none" stroke="url(#e)" stroke-width="${stroke}" stroke-linecap="round"
-   stroke-linejoin="round">${edges}</g>
+<g fill="url(#e)">
+  ${ring.replace('class="ring"', `fill="none" stroke="url(#e)" stroke-width="${f2(arc.hw * 2)}" stroke-linecap="round"`)}
+  ${figure.replace(/class="face[^"]*"/g, '')}
+  ${headEl.replace('class="head"', 'fill="#7ef0ff"')}
+</g>
 </svg>
 `;
 }
@@ -465,22 +557,22 @@ ${bg}
    ========================================================================== */
 
 mkdirSync(OUT, { recursive: true });
-console.log('Generando iconos en public/');
+console.log('Generando iconos de Bambustatus en public/');
 
 // --- Iconos de la app: figura sobre placa oscura ---------------------------
 for (const [name, size] of [['icon-192.png', 192], ['icon-512.png', 512]]) {
   const cv = canvas(size);
   paintPlate(cv);
-  paintFigure(cv, { scale: 0.68 });
+  paintMark(cv, { scale: 0.7 });
   write(name, cv);
 }
 
 // Maskable: Android recorta hasta un circulo inscrito, asi que la figura se
-// encoge al 60% y el fondo llega a los bordes sin esquinas redondeadas.
+// encoge al 54% y el fondo llega a los bordes sin esquinas redondeadas.
 {
   const cv = canvas(512);
   paintPlate(cv, { rounding: 0 });
-  paintFigure(cv, { scale: 0.52 });
+  paintMark(cv, { scale: 0.54 });
   write('icon-maskable-512.png', cv);
 }
 
@@ -488,36 +580,47 @@ for (const [name, size] of [['icon-192.png', 192], ['icon-512.png', 512]]) {
 {
   const cv = canvas(180);
   paintPlate(cv, { rounding: 0 });
-  paintFigure(cv, { scale: 0.66 });
+  paintMark(cv, { scale: 0.68 });
   write('apple-touch-icon.png', cv);
 }
 
-// Respaldo del favicon para navegadores sin SVG. A 32 px el trazo tiene que
-// engordar bastante o las lineas interiores se comen unas a otras.
+// Respaldo del favicon para navegadores sin SVG. A 32 px las caras no caben:
+// `markShapes` cae solo a la silueta, y el trazo del anillo engorda un poco.
 {
   const cv = canvas(32);
   paintPlate(cv, { rounding: 0.22 });
-  paintFigure(cv, { scale: 0.74, strokeK: 0.042 });
+  paintMark(cv, { scale: 0.78, boost: 1.12 });
   write('favicon-32.png', cv);
 }
 
 // --- Notificacion: la misma figura, sin placa -----------------------------
-// Android la pinta sobre la tarjeta del sistema, que puede ser blanca o negra
-// segun el tema. Sin fondo y con trazo grueso se lee en las dos.
+// Android la pinta sobre la tarjeta del sistema, que puede ser clara u oscura
+// segun el tema. Sin fondo y con el trazo algo mas grueso se lee en las dos.
 {
   const cv = canvas(192);
-  paintFigure(cv, { scale: 0.88, strokeK: 0.036 });
+  paintMark(cv, { scale: 0.88, boost: 1.1 });
   write('notify-icon.png', cv);
 }
 
 // El badge de la barra de estado es una mascara: el sistema ignora el color y
-// pinta solo la silueta del canal alfa, asi que va en blanco liso y sin halo.
+// pinta solo la silueta del canal alfa, asi que va en blanco liso.
 {
   const cv = canvas(96);
-  paintSilhouette(cv, { scale: 0.9 });
+  paintBadge(cv);
   write('badge-96.png', cv);
 }
 
-writeFileSync(join(OUT, 'favicon.svg'), faviconSvg());
+// El favicon vectorial vive en la pestana, o sea a 16-20 px: la silueta, igual
+// que su respaldo en PNG.
+writeFileSync(join(OUT, 'favicon.svg'), markSvg({ plate: true, facets: false }));
 console.log('  favicon.svg');
+
+// --- Fragmento para la pantalla de carga y la puerta -----------------------
+// La app lo lleva incrustado en public/index.html: ahi la marca se pinta a
+// 150-196 px y si tiene caras. Se imprime para poder copiarlo cuando la
+// geometria cambie, en vez de mantener dos juegos de numeros a mano.
+if (process.argv.includes('--fragment')) {
+  console.log('\n--- fragmento SVG para public/index.html ---\n');
+  console.log(markSvg({ animate: true, facets: true }));
+}
 console.log('Listo.');
